@@ -57,3 +57,46 @@ or acceptance from either the vision or packaging conformance alone.
 - Run the upstream Smart Tools conformance kit when a distribution exists. Report
   its packaging checks separately from Unfold's product acceptance scenarios.
 - Keep patches scoped and preserve unrelated work. Commit or push when requested.
+
+## Develop from this checkout
+
+Use Python 3.12+ and uv. Start with `uv sync`; use `uv sync --extra smart` only
+when exercising model-backed work. Run the CLI as `uv run unfold` from the checkout.
+`uv run unfold --help` owns installation and renderer setup instructions; do not
+copy them into a second contributor reference. Keep test stores and generated
+media in `.work/` or temporary directories.
+
+```sh
+uv run ruff check src tests
+uv run pytest -q
+```
+
+For renderer-backed tests, prepare a dedicated backend as described by the usage
+skill and supply its absolute path:
+
+```sh
+UNFOLD_TEST_BACKEND=/absolute/path/to/backend uv run pytest -q
+uv build
+```
+
+Without that backend, renderer-dependent tests may skip; report skips explicitly.
+Run the upstream [conformance kit](https://github.com/microsoft/amplifier-smart-tools)
+against the extracted distribution with the built wheel installed and its `unfold`
+executable on PATH. Do not point it at a working tree containing other installed
+copies in `.work/`: those are not distribution contents. The kit needs no provider.
+Conformance does not establish creative quality or replace product tests.
+
+## Documentation ownership
+
+- README.md is for people deciding whether and how to use Unfold. Lead with the
+  experience, an example request, prerequisites and honest current limits.
+- This file is for contributors. Keep architecture rules, checkout commands and
+  verification requirements here rather than in the README.
+- `src/unfold/SMART_TOOL.md` owns the top-level installed usage skill.
+  `src/unfold/capability_help.py` owns capability examples, results and recovery;
+  `help.py` renders those skills with current library signatures. The CLI supplies
+  its argument reference and must not reimplement domain guidance.
+- Every `--help` entry point returns a usage skill; `-h` stays a short argument
+  reference. Update capability help with behavior changes, and keep examples
+  consistent with the public library. Help must work without credentials, model
+  initialization, or creation of a library directory.
