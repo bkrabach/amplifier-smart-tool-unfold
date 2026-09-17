@@ -6,7 +6,7 @@ description: >-
   Create and revise silent motion explanations using embedded Amplifier Agent.
   Retain editable source, encoded output, frame evidence and revision history.
 use_cases:
-  - Explain a technical system with animated cards, text, lines and dots
+  - Explain a technical or mathematical idea through animated geometry and text
   - Revise an explanation while retaining the previous version
   - Review, rename and export saved outputs without a model
 platforms:
@@ -26,7 +26,10 @@ requires:
 The Python library is the product. The CLI and optional loopback dashboard adapt
 the same operations. This working slice creates silent, opaque 1280×720 H.264 MP4
 explanations at 30 fps, lasting 5–60 seconds. Its authoring profile supports animated
-cards, text, lines and dots. It is not the full scope of the draft vision/contracts.
+cards, text, lines, dots, vector paths, polygons, circles and circular arcs. Shapes support stroke
+drawing, translation, scaling and rotation, with shared camera pans and zooms.
+It is not the full scope of the draft
+vision/contracts.
 Identity ZIP exchange, imported video/audio, transparent overlays, arbitrary HTML
 authoring, external-edit adoption and automatic dashboard refinement are not yet
 implemented. Identity guidance is currently supplied as text with each brief.

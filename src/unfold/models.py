@@ -44,7 +44,7 @@ class Grant(Strict):
 
 class Element(Strict):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")
-    kind: Literal["card", "text", "line", "dot"]
+    kind: Literal["card", "text", "line", "dot", "path", "circle", "arc"]
     x: float = Field(ge=0, le=1280)
     y: float = Field(ge=0, le=720)
     width: float = Field(gt=0, le=1280)
@@ -57,11 +57,31 @@ class Element(Strict):
     font_size: int = Field(default=28, ge=16, le=80)
     opacity: float = Field(default=0, ge=0, le=1)
     radius: int = Field(default=14, ge=0, le=100)
+    points: list[tuple[float, float]] = Field(default_factory=list, max_length=80)
+    closed: bool = False
+    arrow_end: bool = False
+    stroke_width: float = Field(default=4, ge=0.5, le=20)
+    fill_opacity: float = Field(default=0, ge=0, le=1)
+    draw: float = Field(default=1, ge=0, le=1)
+    start_angle: float = Field(default=0, ge=-360, le=360)
+    sweep_angle: float = Field(default=90, gt=0, lt=360)
+    glow_tip: bool = False
 
     @model_validator(mode="after")
     def fits(self):
+        if self.glow_tip and self.kind != "arc":
+            raise ValueError("A synchronized glowing tip currently requires an arc.")
         if self.x + self.width > 1280 or self.y + self.height > 720:
             raise ValueError("Element must fit the 1280 × 720 canvas.")
+        if self.kind == "path":
+            if len(self.points) < (3 if self.closed else 2):
+                raise ValueError("Paths need two points; closed polygons need three.")
+            if any(not (0 <= x <= self.width and 0 <= y <= self.height) for x, y in self.points):
+                raise ValueError("Path points use local coordinates inside the element's bounds.")
+            if self.arrow_end and (self.closed or self.points[-1] == self.points[-2]):
+                raise ValueError("Arrowheads require an open path with a nonzero final segment.")
+        elif self.points or self.closed or self.arrow_end:
+            raise ValueError("Points, closed and arrow_end apply only to paths.")
         return self
 
 
@@ -73,7 +93,20 @@ class Tween(Strict):
     x: float | None = Field(default=None, ge=-1280, le=1280)
     y: float | None = Field(default=None, ge=-720, le=720)
     scale: float | None = Field(default=None, ge=0.1, le=3)
+    rotation: float | None = Field(default=None, ge=-720, le=720)
+    draw: float | None = Field(default=None, ge=0, le=1)
     ease: Literal["none", "power2.inOut", "power2.out", "power3.out"] = "power2.inOut"
+
+
+class CameraMove(Strict):
+    """World point to place at the screen center, with uniform magnification."""
+
+    at: float = Field(ge=0, le=60)
+    duration: float = Field(default=1, ge=0, le=10)
+    center_x: float = Field(ge=0, le=1280)
+    center_y: float = Field(ge=0, le=720)
+    zoom: float = Field(ge=0.25, le=8)
+    ease: Literal["none", "power2.inOut", "power2.out"] = "power2.inOut"
 
 
 class Scene(Strict):
@@ -84,16 +117,29 @@ class Scene(Strict):
     background: str = Field(default="#08131f", pattern=r"^#[0-9a-fA-F]{6}$")
     elements: list[Element] = Field(min_length=1, max_length=70)
     tweens: list[Tween] = Field(min_length=1, max_length=200)
+    camera: list[CameraMove] = Field(default_factory=list, max_length=30)
+    stroke_animation: Literal["css", "svg"] = "css"
     explanation: str = Field(min_length=1, max_length=3000)
 
     @model_validator(mode="after")
     def references(self):
+        if any(e.glow_tip for e in self.elements) and self.stroke_animation != "svg":
+            raise ValueError("Glowing tips require SVG stroke animation.")
         ids = {element.id for element in self.elements}
-        if "root" in ids:
-            raise ValueError("The element ID root is reserved by the backend.")
+        if ids & {"root", "world"}:
+            raise ValueError("The element IDs root and world are reserved by the backend.")
         if len(ids) != len(self.elements):
             raise ValueError("Element IDs must be unique.")
         for tween in self.tweens:
             if tween.target not in ids or tween.at + tween.duration > self.duration:
                 raise ValueError("Tween target or timing is invalid.")
+            if tween.draw is not None and next(
+                e for e in self.elements if e.id == tween.target
+            ).kind not in {"path", "circle", "arc"}:
+                raise ValueError("Drawing progress applies only to paths and circles.")
+        end = 0
+        for move in self.camera:
+            if move.at < end or move.at + move.duration > self.duration:
+                raise ValueError("Camera moves must be chronological, non-overlapping and fit duration.")
+            end = move.at + move.duration
         return self

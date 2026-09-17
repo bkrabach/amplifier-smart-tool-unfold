@@ -5,6 +5,7 @@ Models supply validated scene data, never executable HTML/JS, paths or shell com
 
 import html
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -14,6 +15,57 @@ from pathlib import Path
 
 from .models import Scene, UnfoldError
 from .store import digest, write_json
+
+
+def geometry(element):
+    """Emit only known SVG primitives; caller/model SVG and script are never accepted."""
+    e = element
+    attributes = (
+        f'class="trace" pathLength="1" stroke="{e.color}" '
+        f'stroke-width="{e.stroke_width}" stroke-linecap="round" '
+        f'stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="{1 - e.draw}" '
+        f'fill="{e.fill}" fill-opacity="{e.fill_opacity}"'
+    )
+    head = ""
+    if e.kind == "arc":
+        radius = max(0, (min(e.width, e.height) - e.stroke_width) / 2)
+        start = math.radians(e.start_angle)
+        end = math.radians(e.start_angle + e.sweep_angle)
+        ax, ay = e.width / 2 + radius * math.cos(start), e.height / 2 + radius * math.sin(start)
+        bx, by = e.width / 2 + radius * math.cos(end), e.height / 2 + radius * math.sin(end)
+        shape = (
+            f'<path d="M {ax} {ay} A {radius} {radius} 0 '
+            f'{int(e.sweep_angle > 180)} 1 {bx} {by}" {attributes}/>'
+        )
+        if e.glow_tip:
+            head = (
+                f'<circle class="follower" cx="{ax}" cy="{ay}" r="4" '
+                f'fill="#ffffff" stroke="{e.color}" stroke-width="3" '
+                f'style="filter:drop-shadow(0 0 5px {e.color})"/>'
+            )
+    elif e.kind == "circle":
+        radius = max(0, (min(e.width, e.height) - e.stroke_width) / 2)
+        shape = f'<circle cx="{e.width / 2}" cy="{e.height / 2}" r="{radius}" {attributes}/>'
+    else:
+        path = "M " + " L ".join(f"{x} {y}" for x, y in e.points)
+        shape = f'<path d="{path}{" Z" if e.closed else ""}" {attributes}/>'
+        if e.arrow_end:
+            (ax, ay), (bx, by) = e.points[-2:]
+            length = math.hypot(bx - ax, by - ay)
+            dx, dy = (bx - ax) / length, (by - ay) / length
+            size = max(12, e.stroke_width * 3)
+            left = (bx - dx * size - dy * size / 2, by - dy * size + dx * size / 2)
+            right = (bx - dx * size + dy * size / 2, by - dy * size - dx * size / 2)
+            head = (
+                f'<polygon class="head" points="{bx},{by} {left[0]},{left[1]} {right[0]},{right[1]}" '
+                f'fill="{e.color}" opacity="{1 if e.draw == 1 else 0}"/>'
+            )
+    return (
+        f'<div id="{e.id}" class="element" style="left:{e.x}px;top:{e.y}px;'
+        f'width:{e.width}px;height:{e.height}px;opacity:{e.opacity};pointer-events:none">'
+        f'<svg width="{e.width}" height="{e.height}" viewBox="0 0 {e.width} {e.height}" '
+        f'xmlns="http://www.w3.org/2000/svg">{shape}{head}</svg></div>'
+    )
 
 
 def run(argv, timeout=180):
@@ -65,10 +117,15 @@ class Backend:
 
     def author(self, scene: Scene, directory):
         self.require()
+        # Canonical numeric types make authored bytes stable across JSON round trips.
+        scene = Scene.model_validate(scene.model_dump())
         directory = Path(directory)
         directory.mkdir(exist_ok=True)
         elements = []
         for e in scene.elements:
+            if e.kind in {"path", "circle", "arc"}:
+                elements.append(geometry(e))
+                continue
             padding = "18px" if e.kind == "card" else "0"
             background = e.fill if e.kind != "text" else "transparent"
             border = f"1px solid {e.border}" if e.kind == "card" else "none"
@@ -82,8 +139,44 @@ class Backend:
             )
         lines = []
         for tween in scene.tweens:
-            props = tween.model_dump(exclude_none=True, exclude={"target", "at"})
-            lines.append(f'tl.to("#{tween.target}",{json.dumps(props)},{tween.at});')
+            props = tween.model_dump(exclude_none=True, exclude={"target", "at", "draw"})
+            if tween.draw is None or set(props) - {"duration", "ease"}:
+                lines.append(f'tl.to("#{tween.target}",{json.dumps(props)},{tween.at});')
+            if tween.draw is not None:
+                trace = {
+                    "strokeDashoffset": 1 - tween.draw,
+                    "duration": tween.duration,
+                    "ease": tween.ease,
+                }
+                if scene.stroke_animation == "svg":
+                    trace["attr"] = {"stroke-dashoffset": trace.pop("strokeDashoffset")}
+                encoded_trace = json.dumps(trace)
+                element = next(e for e in scene.elements if e.id == tween.target)
+                if element.glow_tip:
+                    radius = (min(element.width, element.height) - element.stroke_width) / 2
+                    callback = (
+                        '()=>{const e=document.getElementById(' + json.dumps(element.id) + ');'
+                        'const p=1-Number(e.querySelector(".trace").getAttribute("stroke-dashoffset"));'
+                        f'const a=({element.start_angle}+p*{element.sweep_angle})*Math.PI/180;'
+                        'const f=e.querySelector(".follower");'
+                        f'f.setAttribute("cx",{element.width / 2}+{radius}*Math.cos(a));'
+                        f'f.setAttribute("cy",{element.height / 2}+{radius}*Math.sin(a));'
+                        '}'
+                    )
+                    encoded_trace = encoded_trace[:-1] + ',"onUpdate":' + callback + '}'
+                lines.append(f'tl.to("#{tween.target} .trace",{encoded_trace},{tween.at});')
+                if next(e for e in scene.elements if e.id == tween.target).arrow_end:
+                    lines.append(
+                        f'tl.set("#{tween.target} .head",{{opacity:{1 if tween.draw == 1 else 0}}},{tween.at + tween.duration if tween.draw == 1 else tween.at});'
+                    )
+        body = "".join(elements)
+        if scene.camera:
+            body = '<div id="world" style="position:absolute;width:1280px;height:720px;transform-origin:0 0">' + body + '</div>'
+            for move in scene.camera:
+                props = {"x": 640 - move.center_x * move.zoom,
+                         "y": 360 - move.center_y * move.zoom,
+                         "scale": move.zoom, "duration": move.duration, "ease": move.ease}
+                lines.append(f'tl.to("#world",{json.dumps(props)},{move.at});')
         document = f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'">
 <title>{html.escape(scene.title)}</title><script src="gsap.min.js"></script><style>
@@ -93,7 +186,7 @@ body{{font-family:system-ui,sans-serif}}#root{{position:relative;width:100%;heig
 .label{{font-size:14px;line-height:1.2;letter-spacing:1.5px;margin-bottom:10px;font-weight:600}}
 .line,.dot{{pointer-events:none}}
 </style></head><body><div id="root" data-composition-id="unfold" data-start="0" data-width="1280" data-height="720" data-duration="{scene.duration}">
-{"".join(elements)}</div><script>
+{body}</div><script>
 window.__timelines=window.__timelines||{{}};const tl=gsap.timeline({{paused:true}});
 {"".join(lines)}
 window.__timelines.unfold=tl;
@@ -122,7 +215,10 @@ window.__timelines.unfold=tl;
             prefix="unfold-validate-", dir=Path(directory).parent
         ) as temporary:
             self.author(scene, temporary)
-            if self.source_hash(temporary) != expected:
+            if any(
+                digest(Path(temporary) / name) != digest(Path(directory) / name)
+                for name in ("index.html", "gsap.min.js")
+            ):
                 raise UnfoldError(
                     "SOURCE_CHANGED",
                     "Generated source was externally modified; no code was executed or replaced.",
