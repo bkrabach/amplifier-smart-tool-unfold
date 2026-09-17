@@ -61,7 +61,7 @@ comment and applies it to a different moment.
    explicitly incorporated by an edit. Recording an action does not promise to wake
    the caller or notify another application.
 9. **Creative-library management is part of participation.** People can browse,
-   organize, preview, reopen, duplicate, import/export and deliberately remove
+   organize, rename, preview, reopen, duplicate, import/export and deliberately remove
    supported work and identities, with the dependency behavior of the
    [creative-library contract](creative-library.v1.md). Project identity selection
    names a version. ZIP import and shared updates do not silently replace selections.

@@ -48,9 +48,14 @@ library boots an agent or demands a host's conversational session.
    are required before claiming conformance. Draft documents do not substitute.
 6. **Inputs do not assume shared ambient context.** Additional caller context can
    be supplied as actual content. Adapters may mechanically load selected files.
-   Large media and domain sources may use documented scoped references with explicit
-   accessibility requirements; a local path is not presumed available on another
-   host. Supplied summaries are distinguishable from originals actually inspected.
+   Large media can be supplied through scoped path references or managed asset IDs;
+   callers need not embed video/audio bytes in a request or model context. These are
+   explicit library inputs, not a CLI-only convenience. Document which process must
+   be able to read a reference; a path on another host is not presumed accessible.
+   Any required transfer or retained copy is explicit, with source, destination and
+   ownership reported under the [creative-library contract](creative-library.v1.md).
+   Supplying a path grants no right to move, overwrite or delete its source. Supplied
+   summaries remain distinguishable from originals actually inspected.
 7. **Results and failures compose.** Library results are typed and usable directly.
    The CLI provides documented machine-usable results on stdout and diagnostics on
    stderr. Errors name a cause and remedy and exit nonzero. Closed-stdin calls never
@@ -79,6 +84,9 @@ library boots an agent or demands a host's conversational session.
 - Compare library and CLI outcomes and side effects for the same operations.
   Ensure machine results parse and closed stdin never produces a hanging prompt.
 - Inspect writes and process starts for out-of-scope mutation or implicit services.
+- Supply a large local media file by reference without inlining its bytes. Exercise
+  a retained-copy request and an inaccessible remote-host path; report the actual
+  copy or access failure while preserving the source and avoiding model disclosure.
 
 These are proposed assertions, not executed checks. Upstream conformance does not
 prove creative quality, media correctness or dashboard behavior.

@@ -40,6 +40,10 @@ the caller believing nothing changed.
    preview and export references, dependency and identity versions, relevant evidence,
    assumptions, checks and limitations. Callers can retrieve them without private
    storage queries, internal transcripts, screen scraping or parsing narrative paths.
+   File references disclose managed copies versus external sources under the
+   [creative-library contract](creative-library.v1.md). Callers use public operations
+   to rename or delete managed assets so records and dependencies remain consistent;
+   possession of an input path is not permission to delete the original.
 5. **Handoffs state how a contribution fits.** Where applicable, results describe
    dimensions, duration, frame/time basis, transparency, placement coordinates,
    synchronization anchors, reference recording identity and audio policy. A cue

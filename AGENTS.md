@@ -1,6 +1,6 @@
 # Working on Unfold
 
-Read [the vision](docs/VISION.md) and [the contract map](contracts/README.md) before
+Read [the vision](docs/VISION.md) and [the contracts](contracts/README.md) before
 planning or changing product behavior. The repository currently contains drafts,
 not a runnable tool. Do not claim installability or conformance from these files.
 
@@ -32,6 +32,9 @@ not a runnable tool. Do not claim installability or conformance from these files
 - Keep tracked files focused on deliverables and durable contributor guidance.
   Put research, deliberations, trial media, scratch scripts and local review records
   in gitignored `.work/` or caller-owned storage. Never depend on private trial files.
+- Keep document indexes to links; requirements belong in their governing documents.
+  Write the user-facing README when working behavior can be documented. Keep
+  intermediate plans and phased delivery notes in `.work/`, not the vision.
 - Keep credentials, local viewer secrets, generated stores and private footage out
   of Git. Preserve upstream attribution and licenses when reusing code or assets.
 - Keep runtime state outside the installation tree; use documented per-user

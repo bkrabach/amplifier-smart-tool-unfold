@@ -11,12 +11,12 @@ supplies relevant material and constraints, and receives an editable composition
 and usable outputs. The caller does not need to become a motion designer or operate
 the production backend's specialist tools.
 
-The initial emphasis is technical communication, especially AI and software:
+Unfold helps communicate complex ideas, including AI and software concepts:
 explaining a handoff between agents, showing information moving through a system,
 making a data relationship understandable, and helping an audience follow a real
 working demo. Titles, transitions, branded segments and reusable overlays belong
-alongside explanatory graphics. These examples guide verification without becoming
-a closed menu or a promise to handle every visual request.
+alongside explanatory graphics. These are examples of its creative range, not a
+closed menu or a promise to handle every visual request.
 
 Unfold is an Amplifier-powered Smart Tool. The library is the product; its thin CLI
 and optional built-in dashboard are adapters. Embedded intelligence interprets
@@ -25,12 +25,6 @@ Code performs work that does not need a model. A caller can manage assets, inspe
 retained work, render an existing valid composition and export available results
 without model credentials. The calling agent need not use Amplifier or share its
 internal sessions. Provider and model choices are explicit configuration.
-
-HyperFrames is the initial production backend. Unfold can use its skills and
-capabilities internally while presenting its own product boundary to callers.
-Editable compositions may depend on that backend, and those dependencies remain
-visible. Supporting another renderer, migrating old projects or designing a
-universal animation representation is outside the initial scope.
 
 ## Explore an explanation, then develop it
 
@@ -69,8 +63,8 @@ Adopting an update is a deliberate revision that can be reviewed.
 Identity packs can be exported and imported as ZIP files so a teammate can use
 them without reconstructing the creator's machine. Packs carry their guidance,
 eligible assets, version information and declared dependencies. Finished videos,
-editable projects and reusable identity packs are distinct exports. A shared online
-library service is not required for the initial product.
+editable projects and reusable identity packs are distinct exports. Teammates can
+exchange these packs without depending on a shared online library service.
 
 ## Contribute to a larger production
 
@@ -94,7 +88,7 @@ apparent evidence that a system performed it.
 Imported narration, sound effects, music and audio signatures can guide timing
 and accompany output or identity packs. Separate assets and their timing remain
 available for a compositor when requested. Unfold does not generate voices, music
-or sound effects in its initial scope.
+or sound effects.
 
 ## Review and return to the same work
 
@@ -119,9 +113,10 @@ material it used. Exporting a snapshot does not erase the ongoing project.
 
 External source edits are detected and can be adopted as a new revision; they do
 not silently overwrite the reviewed record or inherit checks on earlier bytes.
-People can reopen, duplicate, organize and remove work deliberately. Removing a
-shared asset exposes its dependents, and disposable caches are separate from
-creative work worth retaining.
+People can reopen, rename, duplicate, organize and remove work deliberately.
+Renaming an asset or saved output does not require regeneration or re-export,
+and preserves its identity and references. Removing a shared asset exposes its
+dependents, and disposable caches are separate from creative work worth retaining.
 
 ## Principles
 
@@ -142,16 +137,14 @@ creative work worth retaining.
 8. **Authority and resources remain bounded.** Existing valid authority supports
    follow-up without repeated approval; content or model output cannot expand it.
 
-## Initial boundaries
+## What this deliberately resists
 
-- Build a useful demonstration and get feedback before adding infrastructure.
-- Keep creative requests open while proving a small set of representative outcomes.
-- Use HyperFrames first; defer migration and a general renderer abstraction framework.
-- Support imported audio and its handoff; exclude sound generation.
-- Share identities through ZIP files; defer hosted libraries and real-time team editing.
-- Do not build demo capture, a general video editor or an entire production orchestrator.
-- Do not assume every upstream skill, integration, codec or platform is supported.
-- Creation and export do not imply publication, external sharing or account setup.
+- Restricting creative requests to a closed catalog of animation templates.
+- Expanding audio import and synchronization into sound generation.
+- Requiring a hosted library or real-time team editing to share an identity.
+- Becoming a demo-capture tool, general video editor or entire production orchestrator.
+- Claiming support for upstream capabilities without verifying them in Unfold.
+- Treating creation or export as publication, external sharing or account setup.
 
 ## How you can tell it is working
 

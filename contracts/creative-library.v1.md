@@ -19,7 +19,7 @@ different font or reads files from the creator's absolute paths.
 
 1. **Retention is discoverable and configurable.** The library has a documented
    per-user default outside the installation tree and accepts a user/caller-selected
-   location. Projects and reusable material can be listed, inspected, named,
+   location. Projects and reusable material can be listed, inspected, named, renamed,
    organized, duplicated and reopened through public capabilities. Work does not
    depend on a browser session or developer checkout. Permission or storage failures
    do not silently send material to a different location.
@@ -80,16 +80,39 @@ different font or reads files from the creator's absolute paths.
     A requested destructive removal with dependents needs an explicit choice; exact
     retention/refusal behavior is documented. Generated output removal does not
     delete original footage. Cache cleanup is separate from project/asset deletion.
-    A deletion result identifies what was removed, missing, retained or failed.
-11. **Source and copy ownership remain clear.** Imports and exports distinguish
-    retained copies from caller-owned references. Changes to an external reference
-    are detected where they affect reuse. Cleanup does not delete originals or claim
-    that removing a library copy removes already shared ZIPs or downstream copies.
+    Deletion of Unfold-managed material goes through the public library API, including
+    when initiated by a caller, CLI or dashboard. Returned paths support inspection
+    and consumption; they are not a deletion interface. The operation updates records,
+    dependency state and caller-visible observations. A deletion result identifies
+    what was removed, missing, retained or failed. Unexpected missing files are
+    reported, not silently treated as an accounted-for API deletion.
+11. **Source references and retained copies have explicit ownership.** Each intake
+    declares whether Unfold reads an external reference or copies material into its
+    managed library, such as an identity's assets. Document the default and allow the
+    caller to select the supported mode. Report the original reference, resulting
+    managed identity/location, completed copy and remaining external dependencies.
+    Copying preserves the original; a supplied input path never authorizes a move,
+    overwrite or deletion. Unfold does not delete external originals during import,
+    export, removal or cleanup. Any separately user-directed deletion by a caller
+    outside Unfold is the caller's operation, not an Unfold side effect.
+    A retained copy is usable independently of its original where the import promises
+    that; reference-only use reports loss or changes of the external source. Failed
+    copies do not claim a complete import or delete the original. Removing a managed
+    copy does not remove already shared ZIPs or downstream copies.
 12. **Useful metadata survives sharing.** Imported material retains origin, declared
     versions, configurable inputs, required dependencies and applicable guidance.
     Source file identity does not masquerade as a global path. A fresh caller can
     trace a project contribution to its imported identity version without access
     to the exporting user's account, private history or agent session.
+13. **Renaming changes a label without recreating the asset.** Projects, identities,
+    media, reusable elements and saved outputs can be renamed through the public
+    library without a model call, render or re-export. Stable identity, content bytes,
+    composition revisions and dependency references remain intact. The current
+    display name and subsequent download filename reflect the change where applicable;
+    prior exported copies are not rewritten. Names are collision-safe labels, not
+    paths or identities. Report naming conflicts without overwriting another item.
+    Renaming is recorded and observable to callers. Physical file relocation is not
+    required; any managed path change preserves reference resolution and is reported.
 
 ## Proposed acceptance checks
 
@@ -107,6 +130,17 @@ different font or reads files from the creator's absolute paths.
   revision, preserve the previous one and invalidate relevant checks and previews.
 - Delete a shared asset with dependents and verify the chosen policy; separately
   clear caches and delete an export without damaging source or retained work.
+- Rename an asset used by two projects, an identity and a saved export through the
+  library and dashboard. Verify stable IDs, unchanged bytes/revisions, intact
+  references, updated labels/download names and a caller-visible change, with no
+  model call, render or re-export. Exercise duplicate names without overwriting.
+- Import by path once as a retained copy and once as an external reference. Verify
+  reported locations and ownership, unchanged originals, independent use of the
+  copy and a useful failure when the external reference becomes unavailable.
+  Interrupt a copy and confirm no false completion or original deletion.
+- Remove managed material through the API and verify records and observations agree
+  with disk. Remove a fixture externally and verify the missing-file discrepancy is
+  surfaced; do not invent an API deletion receipt for it.
 - Export and reopen an editable project; identify omitted history and dependencies
   rather than confusing that export with either a video or complete library backup.
 
