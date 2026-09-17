@@ -1,0 +1,38 @@
+[project]
+name = "amplifier-smart-tool-unfold"
+version = "0.1.0.dev0"
+description = "Library-first motion graphics with embedded Amplifier intelligence."
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.10,<3", "Pillow>=11,<13"]
+
+[project.optional-dependencies]
+smart = ["amplifier-agent @ git+https://github.com/microsoft/amplifier-agent@v0.17.0", "google-genai>=1", "openai>=1", "anthropic>=0.70"]
+
+[project.scripts]
+unfold = "unfold.cli:main"
+
+[project.urls]
+Repository = "https://github.com/robotdad/amplifier-smart-tool-unfold"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unfold"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.12"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:amplifier_module"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

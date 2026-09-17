@@ -1,8 +1,9 @@
 # Working on Unfold
 
 Read [the vision](docs/VISION.md) and [the contracts](contracts/README.md) before
-planning or changing product behavior. The repository currently contains drafts,
-not a runnable tool. Do not claim installability or conformance from these files.
+planning or changing product behavior. The contracts remain drafts. The packaged
+SMART_TOOL.md documents the implemented slice; do not infer full product support
+or acceptance from either the vision or packaging conformance alone.
 
 ## Architecture
 
