@@ -105,3 +105,25 @@ class Store:
         path = self.root / "operations" / operation_id
         path.mkdir(exist_ok=True)
         return path
+
+
+@contextmanager
+def portable_archive(destination):
+    """Publish a complete ZIP without overwrite; failures never leave a partial export."""
+    import os
+    import tempfile
+    import zipfile
+
+    destination = Path(destination)
+    descriptor, name = tempfile.mkstemp(prefix=".unfold-", suffix=".zip", dir=destination.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+            yield archive
+        try:
+            os.link(temporary, destination)
+        except FileExistsError:
+            raise UnfoldError("OUTPUT_EXISTS", "Choose a new ZIP destination.") from None
+    finally:
+        temporary.unlink(missing_ok=True)

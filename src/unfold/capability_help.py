@@ -1,0 +1,286 @@
+"""Capability skill content; rendered by library help, never by intelligence."""
+
+# Purpose, example arguments, result, and operation-specific recovery/constraints.
+CAPABILITY_HELP = {
+    "sample-output": (
+        "Inspect encoded frames without a model",
+        {"artifact_id": "ARTIFACT", "times": [1, 3]},
+        "Artifact hash and PNG frame paths, timestamps and hashes.",
+        "Choose 1–12 times before the output ends. Requires FFmpeg/FFprobe and intact media. Samples do not inspect audio or continuous motion.",
+    ),
+    "update-asset": (
+        "Update an asset's sharing declarations",
+        {"asset_id": "ASSET", "rights": "redistributable"},
+        "Updated asset record with integrity and resolved path.",
+        "Rights are unknown, redistributable or restricted; attribution is optional text. Declare only rights you have; declarations do not verify permission. Use rename to change its name.",
+    ),
+    "authorize-review": (
+        "Give a project a bounded refinement allowance",
+        {
+            "project_id": "PROJECT",
+            "grant": {
+                "provider": "gemini",
+                "model": "YOUR_VISION_MODEL",
+                "allow_context": True,
+                "allow_frames": True,
+                "vision": True,
+            },
+            "refinements": 2,
+        },
+        "Authority record with remaining allowance and grant snapshot.",
+        "Requires caller authorization. Replaces the allowance with 1–10 refinements; does not add to it or spend it. Grant disclosure and limits apply to each accepted job. Read unfold schemas for Grant fields.",
+    ),
+    "review-state": (
+        "Resume review and inspect durable job outcomes",
+        {},
+        "Projects, revisions, drafts, jobs, authority, receipts and events.",
+        "Reconciles interrupted workers but never restarts spending. Inspect a failed receipt before authorizing a new attempt.",
+    ),
+    "save-draft": (
+        "Retain feedback without launching work",
+        {
+            "revision_id": "REVISION",
+            "text": "Keep the dot at the line tip",
+            "at": 3,
+            "end": 5,
+            "sequence": 1,
+        },
+        "Saved draft, or the already newer draft.",
+        "Increase sequence monotonically per revision. Times must fit that revision. Saving does not consume authority; submit-refinement is separate.",
+    ),
+    "submit-refinement": (
+        "Apply feedback through the embedded agent",
+        {
+            "revision_id": "REVISION",
+            "text": "Keep the dot at the line tip",
+            "request_id": "0123456789abcdef0123456789abcdef",
+            "at": 3,
+        },
+        "Acknowledged durable review job; poll review-state for completion and result_revision.",
+        "Requires current base and authorize-review allowance. Consumes once at acceptance, even on failure. Exact retries return the same job; changed input with the same request_id fails. Optional identity_version adopts a pack version. Closing the dashboard does not stop work; use cancel-refinement.",
+    ),
+    "cancel-refinement": (
+        "Request cancellation of a dashboard refinement",
+        {"job_id": "JOB"},
+        "Updated job state.",
+        "Cancellation is not instantaneous. Poll review-state for a terminal outcome; do not infer cancellation from the request alone.",
+    ),
+    "assets": (
+        "List reusable assets",
+        {},
+        "List of asset records with resolved paths and current integrity.",
+        "Use asset to refresh a single item before use. An intact result describes the bytes at the time of the read.",
+    ),
+    "asset": (
+        "Resolve an asset and check its bytes",
+        {"asset_id": "ASSET"},
+        "Asset metadata, ownership, resolved path and integrity.",
+        "Changed or missing originals invalidate external references. Restore the bytes or deliberately import a new asset; never delete a supplied original.",
+    ),
+    "import-asset": (
+        "Bring local media into the library",
+        {"path": "/chosen/logo.png", "role": "image", "mode": "copy", "rights": "redistributable"},
+        "New asset ID, hash, ownership and resolved path.",
+        "Pass a local path, not file bytes. Maximum 256 MiB. Roles: image, video, audio, font, example, motion, recipe. copy retains managed bytes; reference depends on the original location. Neither moves/deletes originals. Rights default unknown; only redistributable assets enter pack ZIPs.",
+    ),
+    "packs": (
+        "Find reusable identities",
+        {},
+        "Pack records with version IDs and current_version.",
+        "Inspect a version ID for guidance and asset membership. Projects pin versions; updating a pack does not change existing work.",
+    ),
+    "save-pack": (
+        "Create a pack or save a new immutable version",
+        {
+            "name": "Team",
+            "guidance": {"required": "Mint lines", "adaptable": "Pacing"},
+            "asset_ids": [],
+        },
+        "Pack record with current_version.",
+        "Supply pack_id to version an existing pack. Guidance is an object up to 20 KB; asset_ids must resolve to intact assets. Optional prerequisites declare unresolved requirements and block creative use until resolved in a new version.",
+    ),
+    "duplicate-pack": (
+        "Make a local variation of a pack",
+        {"pack_id": "PACK", "name": "Team variant"},
+        "New pack with origin observations.",
+        "Assets remain library references. Inspect dependencies before removing shared assets; duplicate names are allowed and IDs remain distinct.",
+    ),
+    "dependencies": (
+        "Check what relies on an item before removing it",
+        {"identity": "ASSET_OR_PACK"},
+        "Retained dependency records.",
+        "Use public IDs. A dependency is a reason to retain an item, not permission to remove its files directly.",
+    ),
+    "remove": (
+        "Remove a managed asset, pack or output",
+        {"identity": "ARTIFACT"},
+        "Removal receipt.",
+        "Deletion changes the library. Asset/pack dependents block removal; inspect dependencies first. External originals are preserved. Removing an output retains composition source. Never delete returned paths to bypass accounting.",
+    ),
+    "export-pack": (
+        "Share an identity version as a ZIP",
+        {"version_id": "VERSION", "destination": "/chosen/team.zip"},
+        "Export path, hash and export details.",
+        "Destination must not exist. Only redistributable assets are included; inspect omissions and prerequisites. Export does not alter the pack or source files.",
+    ),
+    "inspect-pack": (
+        "Validate a ZIP before offering import",
+        {"path": "/chosen/team.zip"},
+        "Validated manifest, content summary and archive sha256.",
+        "Rejects absent/invalid manifest, unsafe paths, unexpected entries and hash failures. Limits: 256 entries, 256 MiB expanded, 1 MiB manifest, 257 MiB archive. Nothing executes or installs on inspection.",
+    ),
+    "import-pack": (
+        "Adopt a validated ZIP into this library",
+        {"path": "/chosen/team.zip", "expected_sha256": "SHA256_FROM_INSPECTION"},
+        "Import receipt with local IDs and origin references.",
+        "Inspect first and pass expected_sha256 to detect changes. IDs are remapped. Identical imports return the prior receipt; conflicting claims fail unless conflict is explicitly copy. Imported motion/recipe files remain inert.",
+    ),
+    "configure-delivery": (
+        "Pin footage, audio and timing to a revision",
+        {
+            "revision_id": "REVISION",
+            "reference_id": "VIDEO_ASSET",
+            "reference_start": 2,
+            "audio": [
+                {"asset_id": "AUDIO_ASSET", "start": 1, "offset": 0, "duration": 4, "gain": 1}
+            ],
+            "cues": [{"at": 1, "text": "Narration starts"}],
+        },
+        "Delivery ID, dependency hashes, timing and output profile.",
+        "Requires FFprobe for media. All times are seconds; trims must fit both source and composition. Up to eight audio tracks, gain 0–2. Footage fits with letterboxing; recording audio is excluded. Omit reference_id/audio for graphics alone.",
+    ),
+    "render-delivery": (
+        "Render a pinned video or transparent overlay",
+        {"delivery_id": "DELIVERY", "mode": "overlay"},
+        "Saved artifact record with output profile and dependency evidence.",
+        "Requires pinned backend, FFmpeg/FFprobe and intact inputs. mode video produces H.264 with selected audio; overlay produces silent ProRes 4444 MOV with alpha. Changed inputs require deliberate new delivery configuration. Browser MOV playback is not assumed.",
+    ),
+    "export-handoff": (
+        "Package delivery for another tool",
+        {"artifact_id": "ARTIFACT", "destination": "/chosen/handoff.zip"},
+        "ZIP path, hash and manifest.",
+        "Use a render-delivery artifact and a new destination. Includes output, separate supplied audio and timing/hashes. Overlay handoffs exclude reference footage; video output already includes its composited footage.",
+    ),
+    "adopt-identity": (
+        "Apply an identity version to an existing composition",
+        {
+            "revision_id": "REVISION",
+            "version_id": "VERSION",
+            "grant": {
+                "provider": "gemini",
+                "model": "YOUR_VISION_MODEL",
+                "allow_context": True,
+                "allow_frames": True,
+                "vision": True,
+            },
+        },
+        "Operation record; completed status identifies a new revision.",
+        "Model-backed; requires smart extra, provider credentials, backend and explicit disclosure grant. Earlier revision stays pinned. Resolve pack prerequisites first. Optional request_id protects exact retries; inspect failed operations before a new attempt.",
+    ),
+}
+
+# Purpose, complete CLI example, result, constraints/recovery.
+COMMAND_HELP = {
+    "manifest": (
+        "Discover available capabilities",
+        "unfold manifest",
+        "JSON descriptor and deterministic/model-backed capability classification.",
+        "Needs no provider or renderer. JSON capability names are invoked through unfold call NAME.",
+    ),
+    "schemas": (
+        "Prepare validated requests",
+        "unfold schemas",
+        "Brief and Grant JSON schemas and JSON capability signatures.",
+        "Needs no provider. Defaults and bounds are authoritative; unknown Brief/Grant fields are rejected.",
+    ),
+    "backend-package": (
+        "Obtain pinned renderer dependencies",
+        "unfold backend-package",
+        "npm package manifest JSON.",
+        "Needs no provider. Write only to a new dedicated backend directory, then install with npm. See unfold --help for setup; this command does not install anything.",
+    ),
+    "doctor": (
+        "Check local prerequisites",
+        "unfold doctor",
+        "Library path, backend checks and provider credential-presence booleans.",
+        "Does not authenticate or prove a credential/model works. Resolve missing tools before rendering; never paste credentials into a brief.",
+    ),
+    "projects": (
+        "Find work to reopen",
+        "unfold projects",
+        "Project records and revision IDs.",
+        "Reads retained state without a model. Use inspect on an ID to resolve its details.",
+    ),
+    "inspect": (
+        "Inspect retained work and integrity",
+        "unfold inspect REVISION",
+        "Record and, for revisions, resolved artifacts and source integrity.",
+        "ID can identify a retained record. Changed/missing bytes do not retain valid checks. Restore originals or make a deliberate new input; inspection never repairs or starts model work.",
+    ),
+    "observe": (
+        "Discover changes since a caller's last visit",
+        "unfold observe --after 0",
+        "Ordered durable events with cursors.",
+        "Persist the returned cursor for continuation. Reads do not launch work; use inspect to resolve referenced IDs.",
+    ),
+    "rename": (
+        "Rename a project, pack, asset or output",
+        'unfold rename ARTIFACT "Agent loop"',
+        "Updated record.",
+        "IDs and bytes remain stable; names may repeat. Previously exported copies are unchanged. No rerender is needed.",
+    ),
+    "export": (
+        "Copy saved media to a caller-owned directory",
+        "unfold export ARTIFACT /chosen/exports",
+        "Exported path and integrity information.",
+        "Requires intact output and refuses overwrite. Choose another destination/name if occupied. This is a media copy; use call export-pack or export-handoff for ZIPs.",
+    ),
+    "render": (
+        "Render retained source again without intelligence",
+        "unfold render REVISION",
+        "New saved artifact.",
+        "Requires intact source and pinned renderer/FFmpeg dependencies. Fails rather than silently repairing changed source; no provider is required.",
+    ),
+    "feedback": (
+        "Retain a targeted comment without spending",
+        'unfold feedback REVISION "Make the handoff clearer"',
+        "Pending feedback record.",
+        "Does not start revision work. Use revise with an explicit grant or call submit-refinement with prior project authority to apply feedback.",
+    ),
+    "address-feedback": (
+        "Link submitted feedback to its result",
+        "unfold address-feedback FEEDBACK REVISION",
+        "Updated feedback record.",
+        "Result revision must carry the same feedback and original base. Does not launch work or claim human approval.",
+    ),
+    "cancel": (
+        "Request cancellation of a synchronous creative operation",
+        "unfold cancel OPERATION",
+        "Operation with cancellation requested.",
+        "A live supervisor must stop work and record the terminal outcome; cancelling is not cancelled. Inspect the operation. For dashboard jobs use call cancel-refinement.",
+    ),
+    "create": (
+        "Animate a new explanation",
+        "unfold create --brief brief.json --grant grant.json --request-id 0123456789abcdef0123456789abcdef",
+        "Operation record; completed status includes project_id and revision_id.",
+        "Model-backed. Requires smart extra, selected provider key, vision-capable model and renderer. Brief context contains actual text, not paths to discover. Grant explicitly allows context/frame disclosure and bounds work. Exact retries with the same 32 lowercase hexadecimal request ID do not spend again; inspect uncertain outcomes before a fresh request.",
+    ),
+    "revise": (
+        "Apply a change while retaining the earlier composition",
+        'unfold revise REVISION --feedback "Keep the dot at the line tip" --grant grant.json',
+        "Operation record; completed status identifies the new revision.",
+        "Model-backed with the same prerequisites/disclosure as create. Base must be current and intact. Optional --request-id protects exact retries. A stale base requires reviewing the latest revision and adapting feedback, not silently retargeting it.",
+    ),
+    "dashboard": (
+        "Open a local review workspace",
+        "unfold dashboard --port 0",
+        "One JSON object containing a private loopback viewer URL; process remains running.",
+        "Open that URL in a browser. Ctrl-C stops the service; closing the tab does not. The dashboard cannot grant spending authority: call authorize-review separately. Keep the viewer token private. Port 0 chooses an available port.",
+    ),
+    "call": (
+        "Invoke the JSON capability adapter",
+        "unfold call packs --args - <<'JSON'\n{}\nJSON",
+        "The chosen capability's JSON result.",
+        "Use unfold call NAME --help for its skill or -h for the adapter flag reference. --args accepts a JSON object file or - for stdin. Paths refer to the tool's machine. Closed or invalid stdin fails without prompting.",
+    ),
+}

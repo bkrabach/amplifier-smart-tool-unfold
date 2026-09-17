@@ -11,15 +11,63 @@ import sys
 import time
 from pathlib import Path
 
+from .assets import Assets
 from .backend import Backend
+from .delivery import Delivery
 from .models import Brief, Grant, UnfoldError
+from .review import Review
 from .store import Store, digest, uid, write_json
 
 
-class Unfold:
+class Unfold(Review, Assets, Delivery):
     def __init__(self, library=None, backend=None):
         self.store = Store(library or Path.home() / ".local/share/unfold")
         self.backend = Backend(backend or Path.home() / ".local/share/unfold-backend")
+
+    def sample_output(self, artifact_id, times):
+        import math
+
+        from .backend import run
+        from .delivery import media_info
+
+        artifact = self.artifact(artifact_id)
+        if artifact["integrity"] != "intact":
+            raise UnfoldError("MATERIAL_CHANGED", "Output is changed or missing.")
+        info = media_info(artifact["path"])
+        if (
+            not times
+            or len(times) > 12
+            or any(not math.isfinite(t) or not 0 <= t < info["duration"] for t in times)
+        ):
+            raise UnfoldError("INVALID_INPUT", "Choose 1–12 finite times within the output.")
+        directory = self.store.workspace(uid())
+        frames = []
+        for i, t in enumerate(times):
+            path = directory / f"frame-{i}.png"
+            run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-ss",
+                    str(t),
+                    "-i",
+                    artifact["path"],
+                    "-frames:v",
+                    "1",
+                    str(path),
+                ],
+                timeout=30,
+            )
+            frames.append({"path": str(path), "time": t, "sha256": digest(path)})
+        result = {
+            "artifact_id": artifact_id,
+            "sha256": artifact["sha256"],
+            "frames": frames,
+            "method": "decoded PNG samples; sampling gaps and audio not inspected",
+        }
+        self.store.event("output_sampled", artifact_id, result)
+        return result
 
     def doctor(self):
         return {
@@ -47,7 +95,7 @@ class Unfold:
             directory = self.store.root / record["source"]
             try:
                 intact = self.backend.source_hash(directory) == record["source_sha256"]
-            except OSError:
+            except (OSError, ValueError, UnfoldError):
                 intact = False
             record["source_integrity"] = "intact" if intact else "changed_or_missing"
             record["source_path"] = str(directory)
@@ -62,7 +110,9 @@ class Unfold:
             if path.is_file() and digest(path) == record["sha256"]
             else "changed_or_missing"
         )
-        record["download_name"] = re.sub(r"[^\w .-]", "_", record["name"]).strip(". ") + ".mp4"
+        record["download_name"] = (
+            re.sub(r"[^\w .-]", "_", record["name"]).strip(". ") + "." + record.get("format", "mp4")
+        )
         return record
 
     def observe(self, after=0):
@@ -74,10 +124,8 @@ class Unfold:
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             record = self.store.get(identity, db=db)
-            if record.get("kind") not in {"project", "artifact"}:
-                raise UnfoldError(
-                    "UNSUPPORTED", "This slice renames projects and saved video outputs."
-                )
+            if record.get("kind") not in {"project", "artifact", "asset", "pack"}:
+                raise UnfoldError("UNSUPPORTED", "Rename projects, packs, assets and outputs.")
             record["name"] = name.strip()
             self.store.put(record["kind"], record, db)
             self.store.event("renamed", identity, {"name": name.strip()}, db)
@@ -164,17 +212,46 @@ class Unfold:
     def create(self, brief: Brief, grant: Grant, *, request_id=None):
         return self._produce(brief, grant, request_id=request_id)
 
-    def revise(self, revision_id, feedback, grant: Grant, *, request_id=None):
+    def revise(
+        self,
+        revision_id,
+        feedback,
+        grant: Grant,
+        *,
+        request_id=None,
+        target=None,
+        identity_version=None,
+    ):
         revision = self.inspect(revision_id)
         if revision.get("kind") != "revision" or revision["source_integrity"] != "intact":
             raise UnfoldError("MATERIAL_CHANGED", "A valid retained base revision is required.")
         if not isinstance(feedback, str) or not 1 <= len(feedback) <= 5000:
             raise UnfoldError("INVALID_INPUT", "Use feedback of 1–5000 characters.")
         return self._produce(
-            Brief.model_validate(revision["brief"]),
+            Brief.model_validate(revision["brief"]).model_copy(
+                update={"identity_version": identity_version}
+            )
+            if identity_version
+            else Brief.model_validate(revision["brief"]),
             grant,
             base=revision,
             feedback=feedback,
+            target=target,
+            request_id=request_id,
+        )
+
+    def adopt_identity(self, revision_id, version_id, grant, request_id=None):
+        revision = self.inspect(revision_id)
+        if revision["source_integrity"] != "intact":
+            raise UnfoldError("MATERIAL_CHANGED", "Valid retained source is required.")
+        brief = Brief.model_validate(revision["brief"]).model_copy(
+            update={"identity_version": version_id}
+        )
+        return self._produce(
+            brief,
+            grant,
+            base=revision,
+            feedback="Adopt the selected identity version; preserve the explanation, timing and unrelated choices.",
             request_id=request_id,
         )
 
@@ -212,9 +289,21 @@ class Unfold:
             "time_basis": "composition seconds",
         }
 
-    def _produce(self, brief, grant, base=None, feedback="", request_id=None):
+    def _produce(self, brief, grant, base=None, feedback="", request_id=None, target=None):
         brief = Brief.model_validate(brief)
         grant = Grant.model_validate(grant)
+        if brief.identity_version:
+            identity = self.store.get(brief.identity_version, "pack_version")
+            if identity["prerequisites"]:
+                raise UnfoldError(
+                    "MISSING_DEPENDENCY",
+                    "Resolve identity prerequisites by saving a new version before use.",
+                )
+            for asset_id, expected in identity["asset_hashes"].items():
+                asset = self.asset(asset_id)
+                if asset["integrity"] != "intact" or asset["sha256"] != expected:
+                    raise UnfoldError("MATERIAL_CHANGED", "Identity assets changed or missing.")
+            brief = brief.model_copy(update={"identity": json.dumps(identity["guidance"])})
         if not (grant.allow_context and grant.allow_frames and grant.vision):
             raise UnfoldError(
                 "DISCLOSURE_REQUIRED",
@@ -229,6 +318,7 @@ class Unfold:
             "grant": grant.model_dump(),
             "base": base["id"] if base else None,
             "feedback": feedback,
+            "feedback_target": target,
         }
         request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         with self.store.connect() as db:
@@ -246,6 +336,12 @@ class Unfold:
                 return (
                     previous  # Includes uncertain/running/failed states; never silently re-spend.
                 )
+            jobs = db.execute("SELECT data FROM records WHERE kind='review_job'").fetchall()
+            if any(
+                j.get("operation_id") == operation_id and j["status"] in ("cancelled", "cancelling")
+                for j in map(lambda row: json.loads(row[0]), jobs)
+            ):
+                raise UnfoldError("CANCELLED", "Refinement was cancelled before execution.")
             if base:
                 project = self.store.get(base["project_id"], "project", db)
                 if project["current_revision"] != base["id"]:
@@ -273,28 +369,87 @@ class Unfold:
             }
             self.store.put("operation", operation, db)
             self.store.event("started", operation_id, {"project_id": project["id"]}, db)
-        if base:
-            payload["base_scene"] = json.loads(
-                (Path(base["source_path"]) / "scene.json").read_text()
-            )
-        write_json(
-            directory / "request.json",
-            {
-                **payload,
-                "library": str(self.store.root),
-                "backend": str(self.backend.root),
-                "operation_id": operation_id,
-            },
-        )
         process = None
         try:
+            resources = {}
+            if brief.identity_version:
+                version = self.store.get(brief.identity_version, "pack_version")
+                for asset_id in version["assets"]:
+                    asset = self.asset(asset_id)
+                    if asset["role"] == "image":
+                        resources[asset_id] = {
+                            "path": asset["path"],
+                            "sha256": asset["sha256"],
+                            "name": asset["name"],
+                        }
+            payload["resources"] = resources
+            if brief.reference_id:
+                reference = self.asset(brief.reference_id)
+                from .delivery import media_info
+
+                info = media_info(reference["path"])
+                if (
+                    reference["role"] != "video"
+                    or reference["integrity"] != "intact"
+                    or info["duration"] < brief.reference_start + brief.duration
+                ):
+                    raise UnfoldError(
+                        "INVALID_REFERENCE",
+                        "Choose intact footage covering the requested composition.",
+                    )
+                payload["reference"] = {
+                    "id": reference["id"],
+                    "path": reference["path"],
+                    "sha256": reference["sha256"],
+                    "start": brief.reference_start,
+                }
+
+            if base:
+                payload["base_scene"] = json.loads(
+                    (Path(base["source_path"]) / "scene.json").read_text()
+                )
+            if target:
+                payload["feedback"] += "\nTarget in composition seconds: " + json.dumps(target)
+            write_json(
+                directory / "request.json",
+                {
+                    **payload,
+                    "library": str(self.store.root),
+                    "backend": str(self.backend.root),
+                    "operation_id": operation_id,
+                },
+            )
             with (directory / "worker.log").open("w") as log:
                 process = subprocess.Popen(
                     [sys.executable, "-m", "unfold.worker", str(directory / "request.json")],
                     stdout=log,
                     stderr=log,
                     start_new_session=True,
+                    env={
+                        key: value
+                        for key, value in os.environ.items()
+                        if key
+                        in {
+                            "PATH",
+                            "HOME",
+                            "USER",
+                            "TMPDIR",
+                            "SYSTEMROOT",
+                            "VIRTUAL_ENV",
+                            "PYTHONPATH",
+                            {
+                                "gemini": "GEMINI_API_KEY",
+                                "openai": "OPENAI_API_KEY",
+                                "anthropic": "ANTHROPIC_API_KEY",
+                            }[grant.provider],
+                        }
+                    },
                 )
+                with self.store.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    running = self.store.get(operation_id, "operation", db)
+                    running["worker_pid"] = process.pid
+                    self.store.put("operation", running, db)
                 deadline = time.monotonic() + grant.max_seconds
                 while process.poll() is None:
                     if self.store.get(operation_id, "operation")["status"] == "cancelling":
@@ -332,8 +487,10 @@ class Unfold:
                 "kind": "revision",
                 "project_id": project["id"],
                 "base_revision": base["id"] if base else None,
+                "identity_version": brief.identity_version,
                 "brief": brief.model_dump(),
                 "feedback": feedback,
+                "feedback_target": target,
                 "source": str(source.relative_to(self.store.root)),
                 "artifacts": [artifact["id"]],
                 "operation_id": operation_id,

@@ -115,14 +115,40 @@ class Backend:
                 "Install the packaged backend.json with npm in the configured backend directory; install ffmpeg.",
             )
 
-    def author(self, scene: Scene, directory):
+    def author(self, scene: Scene, directory, resources=None):
         self.require()
         # Canonical numeric types make authored bytes stable across JSON round trips.
         scene = Scene.model_validate(scene.model_dump())
         directory = Path(directory)
         directory.mkdir(exist_ok=True)
+        resources = resources or {}
+        resource_manifest = {}
+        if resources:
+            from PIL import Image
+
+            (directory / "media").mkdir(exist_ok=True)
+            for identity, path in resources.items():
+                if len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+                    raise UnfoldError("INVALID_ASSET", "Invalid resource identity.")
+                dest = directory / "media" / (identity + ".png")
+                # Decode/re-encode caller images. No SVG/HTML or arbitrary script enters the renderer.
+                with Image.open(path) as image:
+                    if image.width * image.height > 16000000:
+                        raise UnfoldError("INVALID_ASSET", "Image exceeds 16 megapixels.")
+                    image.convert("RGBA").save(dest)
+                resource_manifest[identity] = digest(dest)
+            write_json(directory / "resources.json", resource_manifest)
         elements = []
         for e in scene.elements:
+            if e.kind == "image":
+                if e.asset_id not in resource_manifest:
+                    raise UnfoldError(
+                        "MISSING_DEPENDENCY", "Image is not in the selected identity."
+                    )
+                elements.append(
+                    f'<img id="{e.id}" class="element" src="media/{e.asset_id}.png" style="left:{e.x}px;top:{e.y}px;width:{e.width}px;height:{e.height}px;opacity:{e.opacity};object-fit:contain">'
+                )
+                continue
             if e.kind in {"path", "circle", "arc"}:
                 elements.append(geometry(e))
                 continue
@@ -155,15 +181,15 @@ class Backend:
                 if element.glow_tip:
                     radius = (min(element.width, element.height) - element.stroke_width) / 2
                     callback = (
-                        '()=>{const e=document.getElementById(' + json.dumps(element.id) + ');'
+                        "()=>{const e=document.getElementById(" + json.dumps(element.id) + ");"
                         'const p=1-Number(e.querySelector(".trace").getAttribute("stroke-dashoffset"));'
-                        f'const a=({element.start_angle}+p*{element.sweep_angle})*Math.PI/180;'
+                        f"const a=({element.start_angle}+p*{element.sweep_angle})*Math.PI/180;"
                         'const f=e.querySelector(".follower");'
                         f'f.setAttribute("cx",{element.width / 2}+{radius}*Math.cos(a));'
                         f'f.setAttribute("cy",{element.height / 2}+{radius}*Math.sin(a));'
-                        '}'
+                        "}"
                     )
-                    encoded_trace = encoded_trace[:-1] + ',"onUpdate":' + callback + '}'
+                    encoded_trace = encoded_trace[:-1] + ',"onUpdate":' + callback + "}"
                 lines.append(f'tl.to("#{tween.target} .trace",{encoded_trace},{tween.at});')
                 if next(e for e in scene.elements if e.id == tween.target).arrow_end:
                     lines.append(
@@ -171,14 +197,22 @@ class Backend:
                     )
         body = "".join(elements)
         if scene.camera:
-            body = '<div id="world" style="position:absolute;width:1280px;height:720px;transform-origin:0 0">' + body + '</div>'
+            body = (
+                '<div id="world" style="position:absolute;width:1280px;height:720px;transform-origin:0 0">'
+                + body
+                + "</div>"
+            )
             for move in scene.camera:
-                props = {"x": 640 - move.center_x * move.zoom,
-                         "y": 360 - move.center_y * move.zoom,
-                         "scale": move.zoom, "duration": move.duration, "ease": move.ease}
+                props = {
+                    "x": 640 - move.center_x * move.zoom,
+                    "y": 360 - move.center_y * move.zoom,
+                    "scale": move.zoom,
+                    "duration": move.duration,
+                    "ease": move.ease,
+                }
                 lines.append(f'tl.to("#world",{json.dumps(props)},{move.at});')
         document = f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'">
 <title>{html.escape(scene.title)}</title><script src="gsap.min.js"></script><style>
 *{{box-sizing:border-box}}html,body{{margin:0;width:100%;height:100%;overflow:hidden}}
 body{{font-family:system-ui,sans-serif}}#root{{position:relative;width:100%;height:100%;background:{scene.background};overflow:hidden}}
@@ -199,14 +233,28 @@ window.__timelines.unfold=tl;
     def source_hash(self, directory):
         import hashlib
 
+        resource_path = Path(directory) / "resources.json"
+        extra = ""
+        if resource_path.exists():
+            resources = json.loads(resource_path.read_text())
+            for identity, expected in sorted(resources.items()):
+                if len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+                    raise UnfoldError("INVALID_ASSET", "Invalid resource identity.")
+                actual = digest(Path(directory) / "media" / (identity + ".png"))
+                if actual != expected:
+                    raise UnfoldError("MATERIAL_CHANGED", "Retained image changed.")
+                extra += identity + actual
         return hashlib.sha256(
-            "".join(
-                digest(Path(directory) / name)
-                for name in ("index.html", "gsap.min.js", "scene.json")
+            (
+                extra
+                + "".join(
+                    digest(Path(directory) / name)
+                    for name in ("index.html", "gsap.min.js", "scene.json")
+                )
             ).encode()
         ).hexdigest()
 
-    def render(self, directory, output):
+    def render(self, directory, output, alpha=False):
         self.require()
         # Regenerate executable bytes from validated scene data before any browser execution.
         scene = Scene.model_validate_json((Path(directory) / "scene.json").read_text())
@@ -214,7 +262,16 @@ window.__timelines.unfold=tl;
         with tempfile.TemporaryDirectory(
             prefix="unfold-validate-", dir=Path(directory).parent
         ) as temporary:
-            self.author(scene, temporary)
+            resource_path = Path(directory) / "resources.json"
+            resources = (
+                {
+                    i: Path(directory) / "media" / (i + ".png")
+                    for i in json.loads(resource_path.read_text())
+                }
+                if resource_path.exists()
+                else {}
+            )
+            self.author(scene, temporary, resources)
             if any(
                 digest(Path(temporary) / name) != digest(Path(directory) / name)
                 for name in ("index.html", "gsap.min.js")
@@ -230,6 +287,8 @@ window.__timelines.unfold=tl;
                 str(directory),
                 "--output",
                 str(output),
+                "--format",
+                "mov" if alpha else "mp4",
                 "--fps",
                 "30",
                 "--workers",
@@ -239,7 +298,7 @@ window.__timelines.unfold=tl;
             ],
             timeout=240,
         )
-        meta = self.probe(output)
+        meta = self.probe(output, alpha=alpha)
         if (
             meta["width"] != 1280
             or meta["height"] != 720
@@ -255,10 +314,10 @@ window.__timelines.unfold=tl;
             **meta,
             "method": "ffprobe of encoded MP4",
             "audio": "silent",
-            "alpha": False,
+            "alpha": alpha,
         }
 
-    def probe(self, path):
+    def probe(self, path, alpha=False):
         data = json.loads(
             run(
                 [
@@ -274,8 +333,10 @@ window.__timelines.unfold=tl;
             )
         )
         videos = [s for s in data["streams"] if s["codec_type"] == "video"]
-        if len(videos) != 1 or videos[0]["codec_name"] != "h264":
+        if len(videos) != 1 or videos[0]["codec_name"] != ("prores" if alpha else "h264"):
             raise UnfoldError("INVALID_RENDER", "Expected one H.264 video stream.")
+        if alpha and "a" not in videos[0].get("pix_fmt", ""):
+            raise UnfoldError("INVALID_RENDER", "Expected an alpha channel.")
         if any(s["codec_type"] == "audio" for s in data["streams"]):
             raise UnfoldError("INVALID_RENDER", "This profile promises silent output.")
         return {

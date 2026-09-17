@@ -3,7 +3,7 @@ smart_tool_format: 1
 name: unfold
 version: 0.1.0.dev0
 description: >-
-  Create and revise silent motion explanations using embedded Amplifier Agent.
+  Create, review, reuse and deliver motion graphics using embedded Amplifier Agent.
   Retain editable source, encoded output, frame evidence and revision history.
 use_cases:
   - Explain a technical or mathematical idea through animated geometry and text
@@ -24,15 +24,22 @@ requires:
 # Unfold
 
 The Python library is the product. The CLI and optional loopback dashboard adapt
-the same operations. This working slice creates silent, opaque 1280×720 H.264 MP4
-explanations at 30 fps, lasting 5–60 seconds. Its authoring profile supports animated
-cards, text, lines, dots, vector paths, polygons, circles and circular arcs. Shapes support stroke
-drawing, translation, scaling and rotation, with shared camera pans and zooms.
-It is not the full scope of the draft
-vision/contracts.
-Identity ZIP exchange, imported video/audio, transparent overlays, arbitrary HTML
-authoring, external-edit adoption and automatic dashboard refinement are not yet
-implemented. Identity guidance is currently supplied as text with each brief.
+the same operations. Compositions are 1280×720 at 30 fps, lasting 5–60 seconds.
+The authoring profile supports text, cards, paths, polygons, circles, arcs, image
+assets, stroke drawing and camera motion. An embedded Amplifier Agent creates and
+refines compositions; deterministic operations manage assets, packs and delivery.
+
+Studio review includes full-width Single, synchronized Compare, retained drafts,
+bounded direct refinement, cancellation and observable outcomes. Identity ZIPs carry
+guidance and eligible assets. Delivery supports silent transparent ProRes 4444 MOV
+and H.264 MP4 with optional reference footage and imported audio.
+
+This is not the entire draft vision. Arbitrary HTML/CSS, custom-font rendering,
+external source-edit adoption, editable project ZIP round trips, transcription,
+audio generation and renderer migration are not supported. Fonts can be stored,
+previewed and shared, but a required custom font remains a prerequisite to resolve;
+no promise of font substitution is made. Reusable motion/recipe files are stored
+as inert assets, never executed on import.
 
 ## Installation
 
@@ -43,7 +50,7 @@ uv sync --extra smart
 uv run unfold manifest
 ```
 
-Git installation after these changes are published:
+Install from Git:
 `uv tool install "amplifier-smart-tool-unfold[smart] @ git+https://github.com/robotdad/amplifier-smart-tool-unfold"`.
 The repository is private; the installing caller needs access. Without `[smart]`,
 deterministic capabilities work but creative operations require installing the extra.
@@ -107,8 +114,10 @@ review is labeled and is not continuous playback inspection or human approval.
 State defaults to `~/.local/share/unfold`; select `library` explicitly to change it.
 The backend defaults to `~/.local/share/unfold-backend`. Both paths belong to the
 process running Unfold. Output references identify Unfold-managed bytes; export
-creates a new caller-owned copy and refuses overwrite. This slice accepts no external
-media paths and has no removal operation. Do not delete managed files as an API.
+creates a new caller-owned copy and refuses overwrite. Large input files are passed
+by path to `import_asset`, not embedded in JSON. The default is a managed copy;
+`mode="reference"` keeps an external dependency. Neither mode moves or deletes the
+original. Use `remove` for managed deletion, never delete returned paths as an API.
 
 ## Capabilities
 
@@ -117,7 +126,8 @@ All results are JSON-compatible dictionaries/lists; validated creative inputs ar
 code, message and remedy. CLI stdout is JSON; diagnostics use stderr, and errors or
 failed/cancelled operations exit nonzero. Closed stdin never triggers a prompt.
 Use library return values for chaining. `--help` prints this skill, `-h` prints a
-synopsis, and each subcommand accepts `--help`.
+synopsis. Every subcommand’s `--help` is a capability skill with arguments, examples,
+results and recovery guidance; `-h` is its short flag reference.
 
 Global CLI options `--library PATH` and `--backend PATH` precede the subcommand.
 
@@ -131,15 +141,15 @@ Global CLI options `--library PATH` and `--backend PATH` precede the subcommand.
   feedback, grant and checks as applicable. Reading never starts model work.
 - `artifact(id)`: resolve a saved output's current name, path, ownership and integrity.
 - `observe(after=0)` / `observe --after CURSOR`: ordered durable changes with cursors.
-- `rename(id, name)` / `rename ID NAME`: rename project or saved output without
+- `rename(id, name)` / `rename ID NAME`: rename project, pack, asset or saved output without
   rerendering. Labels may repeat; IDs are unique. Downloads use the current name.
-- `export(artifact_id, directory)` / `export ARTIFACT DIRECTORY`: verified MP4 copy,
+- `export(artifact_id, directory)` / `export ARTIFACT DIRECTORY`: verified media copy,
   no overwrite. Previously exported copies are not renamed or deleted.
 - `render(revision_id)` / `render REVISION`: deterministic re-render of intact source;
   returns a new saved output without model initialization. No automatic repair.
 - `feedback(revision_id, text)` / `feedback REVISION TEXT`: save a pending, targeted
-  comment. A caller must explicitly initiate `revise`; viewing/submitting a comment
-  does not launch model work in this slice.
+  comment. This operation never launches work; `submit_refinement` is the separate
+  authority-consuming operation.
 - `address_feedback(feedback_id, revision_id)` / `address-feedback FEEDBACK REVISION`:
   link a submitted comment to the revision carrying its exact text and original base.
   Records the outcome without claiming human approval or triggering model work.
@@ -149,8 +159,8 @@ Global CLI options `--library PATH` and `--backend PATH` precede the subcommand.
 - `dashboard(port=0)` / `dashboard [--port PORT]`: start a loopback, cookie-protected
   review service. Returned object has `url`, `close()` and context-manager support.
   CLI prints the private viewer URL, waits, and stops on Ctrl-C. No browser opens
-  implicitly. Dashboard plays/scrubs, compares, renames and saves feedback; it only
-  serves encoded video, never executable composition source.
+  implicitly. Dashboard plays/scrubs, compares, retains drafts, applies authorized feedback,
+  manages packs and exports. Composition source is never executed in the dashboard.
 - `unfold.help.manifest()`, `schemas()`, `skill()`, `backend_package()` correspond
   to CLI `manifest`, `schemas`, `--help`, `backend-package` and need no provider.
 
@@ -160,11 +170,174 @@ are readable from another process. Supply a 32-character lowercase hexadecimal
 return the prior state, including running/failed states, without spending again.
 Different input with the same ID fails. After caller/process loss a record may remain
 running; this means uncertain interruption, not permission to retry automatically.
-Cancellation needs a live executing caller; recovery of orphaned work is not yet
-implemented. A new creative attempt requires a new request identity.
+Direct synchronous calls need a live supervisor for cancellation. Dashboard jobs
+reconcile completed or interrupted supervisors on `review_state`; they never restart
+spending automatically. A new creative attempt requires a new request identity.
 
 Retained source is native to this backend profile. Unexpected edits/missing files
 are reported; they do not silently inherit checks. Do not treat SQLite tables or
 directory naming as a supported caller protocol. Use public IDs and file references.
 The full vision and contracts remain draft; packaging conformance is separate from
 creative quality, motion correctness and review acceptance.
+
+## Studio feedback
+
+```python
+tool.authorize_review(project_id, grant, refinements=2)  # 1–10 bounded operations
+# These remain deterministic and never spend:
+tool.save_draft(revision_id, "Move the callout; preserve pacing", at=3, end=5, sequence=1)
+state = tool.review_state()
+# Returns an acknowledged durable job; work survives closing the dashboard.
+job = tool.submit_refinement(
+    revision_id,
+    "Move the callout; preserve pacing",
+    request_id="0123456789abcdef0123456789abcdef",
+    at=3,
+    end=5,
+)
+tool.cancel_refinement(job["id"])
+```
+
+Draft sequence numbers are monotonically increasing per revision; older saves do
+not overwrite newer ones. Apply consumes one allowance at acceptance, even if the
+provider later fails. Exact retries return the same job without spending. Failed
+or interrupted jobs require explicit new authorization when the allowance is used
+up. Feedback on an old base is refused without moving or deleting the draft.
+`review_state` exposes jobs, receipts, revisions, drafts, authority and events.
+The dashboard cannot grant itself more authority. It inherits the launch process's
+selected provider credential. Grant settings are snapshots, not secrets.
+
+## Assets and packs
+
+```python
+logo = tool.import_asset("/chosen/logo.png", role="image", rights="redistributable")
+pack = tool.save_pack(
+    "Team",
+    {"required": "Mint arrows; accurate labels", "adaptable": "Pacing follows the explanation"},
+    asset_ids=[logo["id"]],
+)
+version = pack["current_version"]
+# Pass identity_version=version in Brief, or deliberately adopt it:
+# tool.adopt_identity(revision_id, version, grant, request_id=...)
+exported = tool.export_pack(version, "/chosen/team.zip")
+checked = tool.inspect_pack(exported["path"])
+receipt = tool.import_pack(exported["path"], expected_sha256=checked["sha256"])
+```
+
+- `assets()`, `asset(asset_id)`, `packs()` and `inspect(version_id)` discover retained
+  records, hashes, resolved paths and integrity. PNG/JPEG images from the selected
+  identity can be used by the agent; renderer copies are decoded/re-encoded PNGs.
+- `save_pack(name, guidance, asset_ids=[], pack_id=None, prerequisites=[])` creates
+  a pack or a new immutable version. `guidance` is an object (up to 20 KB), typically
+  `required`, `adaptable`, `examples`. Declared unresolved prerequisites block
+  creative use; resolving them requires an explicit new version. Guidance is passed
+  to the model; arbitrary prose requirements are not mechanically proven.
+- `duplicate_pack(pack_id, name)` creates a local variation with origin observations.
+  `adopt_identity(revision_id, version_id, grant, request_id=None)` creates a new
+  model-backed revision, leaving the earlier revision pinned. Dashboard Adopt uses
+  an existing review allowance through `submit_refinement(identity_version=...)`.
+- `update_asset(asset_id, rights=None, attribution=None)` records declarations.
+  Rights are `unknown` (default), `redistributable`, or `restricted`. ZIP export
+  includes only explicitly redistributable assets; everything else is listed as
+  an omission. Unfold does not verify legal permission. No account, sender or user
+  profile is collected or automatically included.
+- `dependencies(identity)` lists retained dependents. `remove(identity)` supports
+  assets, packs and generated outputs, refuses retained asset/pack dependencies,
+  preserves external originals and reports missing files. Removing an output leaves
+  its composition source available. Names are labels; IDs, bytes and references
+  survive renaming, including names that happen to be identical.
+- ZIP inspection validates a mandatory manifest, supported format, hashes, declared
+  contents and safe entries before exposing a contents view. Limits: 256 entries,
+  256 MiB uncompressed, 1 MiB manifest, 257 MiB archive on disk. Individual asset
+  intake is limited to 256 MiB. No extraction executes scripts or installs fonts.
+- Import remaps to local identities and records origin identities. Repeated identical
+  imports return the previous receipt; conflicting version claims fail.
+  `import_pack(..., conflict="copy")` explicitly imports a separate variation.
+  Original absolute paths, credentials and library caches are excluded from ZIPs.
+
+## Footage, audio and output
+
+`Brief(reference_id=asset_id, reference_start=seconds, cues=[...])` permits the
+agent to inspect up to three footage samples relative to the composition, within
+the frame/disclosure allowance. Sampling gaps remain unobserved; no tracking or
+source authentication is claimed. Keep cue statements explicit. Existing footage
+is referenced as input, never treated as proof that illustrative graphics happened.
+
+```python
+reference = tool.import_asset("/chosen/demo.mp4", role="video", mode="reference")
+audio = tool.import_asset("/chosen/narration.wav", role="audio")
+delivery = tool.configure_delivery(
+    revision_id,
+    reference_id=reference["id"],
+    reference_start=2,
+    audio=[{"asset_id": audio["id"], "start": 1, "offset": 0, "duration": 4, "gain": 1}],
+    cues=[{"at": 1, "text": "Narration starts"}],
+)
+overlay = tool.render_delivery(delivery["id"], mode="overlay")
+video = tool.render_delivery(delivery["id"], mode="video")
+tool.export_handoff(overlay["id"], "/chosen/handoff.zip")
+frames = tool.sample_output(video["id"], [1, 3, 5])
+```
+
+`configure_delivery` pins hashes and a revision. Times use composition seconds;
+`reference_start + composition_time` maps to the recording. Footage scales to fit
+1280×720 with letterboxing. Source trimming and audio placement are explicit; no
+motion tracking, cropping or region transforms are currently exposed. Up to eight
+imported audio tracks can be trimmed, placed and mixed with gain 0–2. Video audio
+is 48 kHz stereo AAC with limiting; reference recording audio is excluded. This
+profile neither transcribes nor asks a model to listen to imported audio.
+
+`render_delivery(..., mode="overlay")` removes the canvas background, retaining
+colored shapes/images, and renders silent ProRes 4444 MOV with real alpha. The
+full-frame layer starts at composition time zero. MOV playback in the browser is
+not assumed. `mode="video"` composites the same layer over the selected footage
+(or composition background) and includes selected audio. Both require intact source
+and dependency hashes; neither uses intelligence. The output profile is explicit,
+not inferred from a file extension.
+
+`export_handoff` creates a ZIP with the chosen output, separate supplied audio and
+a timing manifest with hashes. An overlay handoff never contains reference footage
+or recording audio. Combined Video deliberately includes footage in its encoded
+output. `sample_output` decodes 1–12 PNG frames without a model. Samples prove neither
+continuous temporal quality nor audible quality. Outputs remain independently
+traceable to source revision, profile, audio policy and dependency hashes.
+
+The theme icon cycles System → Light → Dark. System is the default and follows
+live operating-system appearance changes. An explicit override persists in the
+browser without changing composition colors or triggering model work.
+
+Dashboard Save invokes the browser's native save picker when available. Browsers
+without that API use their normal download flow and configured destination; Unfold
+does not simulate an OS chooser or invent a second destination dialog.
+
+## JSON capability adapter
+
+Every operation above is a public `Unfold` method. The CLI also provides
+`unfold call CAPABILITY --args arguments.json` (`--args -` reads stdin).
+Capability names use hyphens: `import-asset`, `save-pack`, `review-state`,
+`authorize-review`, `submit-refinement`, `configure-delivery`, `render-delivery`,
+`export-handoff`, and so forth. Arguments are the corresponding method's named
+parameters in a JSON object. `unfold schemas` lists exact signatures, and
+`unfold manifest` classifies deterministic versus model-backed capabilities.
+
+
+Read `unfold call --help` for the complete JSON capability index and
+`unfold call CAPABILITY --help` before invoking one. Direct command skills:
+
+- `unfold manifest --help` — Discover available capabilities.
+- `unfold schemas --help` — Prepare validated requests.
+- `unfold backend-package --help` — Obtain pinned renderer dependencies.
+- `unfold doctor --help` — Check local prerequisites.
+- `unfold projects --help` — Find work to reopen.
+- `unfold inspect --help` — Inspect retained work and integrity.
+- `unfold observe --help` — Discover changes since a caller's last visit.
+- `unfold rename --help` — Rename a project, pack, asset or output.
+- `unfold export --help` — Copy saved media to a caller-owned directory.
+- `unfold render --help` — Render retained source again without intelligence.
+- `unfold feedback --help` — Retain a targeted comment without spending.
+- `unfold address-feedback --help` — Link submitted feedback to its result.
+- `unfold cancel --help` — Request cancellation of a synchronous creative operation.
+- `unfold create --help` — Animate a new explanation.
+- `unfold revise --help` — Apply a change while retaining the earlier composition.
+- `unfold dashboard --help` — Open a local review workspace.
+- `unfold call --help` — Invoke the JSON capability adapter.

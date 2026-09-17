@@ -1,14 +1,212 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Unfold · Review</title><style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#08131f;color:#edf4f5}body{max-width:1440px;margin:auto;padding:32px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}.brand{font-size:32px;letter-spacing:-1px}.eyebrow{color:#7ed8c4;letter-spacing:2px;font-size:12px}h1{font-size:32px;margin:10px 0}p{color:#aabdc9;line-height:1.5}#players{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.panel{background:#102131;border:1px solid #284052;border-radius:16px;padding:20px}video{width:100%;border-radius:8px;background:#050c14}select,input,textarea,button{font:inherit;color:inherit;background:#0a1927;border:1px solid #375366;border-radius:8px;padding:10px}select{width:100%;margin-bottom:14px}button{cursor:pointer;background:#173b42}button:hover{background:#24545b}a{color:#7ed8c4}textarea{box-sizing:border-box;width:100%;min-height:110px}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0}.small{font-size:13px;color:#aabdc9;overflow-wrap:anywhere}details{margin:16px 0}#notice{color:#eac17d}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#activity{max-height:220px;overflow:auto}label{display:block;margin:12px 0 6px}.columns{display:grid;grid-template-columns:1.2fr 1fr;gap:24px;margin-top:24px}@media(max-width:850px){#players,.columns{grid-template-columns:1fr}}
-</style><header><span class="brand">unfold<span style="color:#7ed8c4">.</span></span><span class="eyebrow">WORKING SLICE / REVIEW</span></header>
-<h1 id="title">Motion, made visible.</h1><p>Actual encoded output from the embedded Amplifier Agent. Play, inspect and leave feedback on the revision you watched.</p>
-<div id="notice" role="status"></div><div class="controls"><button id="play">Play both from start</button><button id="pause">Pause both</button><label for="scrub">Compare at the same time</label><input id="scrub" type="range" min="0" max="20" step="0.1" value="0"><span id="time">0.0s</span></div>
-<div id="players"></div><div class="columns"><section class="panel"><h2>Review notes</h2><p class="small">Submitting saves a durable comment for the caller. It does not start another model run.</p><label for="target">Feedback on</label><select id="target"></select><label for="feedback">What should change or stay?</label><textarea id="feedback" placeholder="Your unsent draft stays here during refresh."></textarea><div class="controls"><button id="submit">Submit feedback</button><span id="receipt" class="small"></span></div></section><section class="panel"><h2>What happened</h2><div id="activity"></div><details><summary>Scope of this slice</summary><p class="small">Silent 720p animation with text, vector paths, polygons and circles, creation and revision through Amplifier Agent, decoded frame review, retained source and outputs, rename, export and this optional review dashboard. Identity ZIP exchange, imported media/audio, transparent overlays and automatic handling of dashboard comments are not implemented here.</p></details></section></div>
-<script>
-let state, selected=[];const $=id=>document.getElementById(id);const text=(tag,value)=>{const e=document.createElement(tag);e.textContent=value;return e};
-async function request(path,data){const r=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const v=await r.json();if(!r.ok)throw Error(typeof v.error==='string'?v.error:JSON.stringify(v.error));return v}
-function showPanel(index,revision){selected[index]=revision.id;const panel=$('panel'+index);const previousVideo=panel.querySelector('video');const retainedTime=previousVideo?previousVideo.currentTime:Number($('scrub').value);panel.replaceChildren();const choose=document.createElement('select');choose.setAttribute('aria-label','Revision '+(index+1));state.revisions.forEach((r,n)=>{const o=text('option',`Revision ${n+1} · ${r.id.slice(0,8)}`);o.value=r.id;o.selected=r.id===revision.id;choose.append(o)});choose.onchange=()=>showPanel(index,state.revisions.find(r=>r.id===choose.value));panel.append(choose);const a=revision.resolved_artifacts[0],v=document.createElement('video');v.id='video'+index;v.controls=true;v.preload='metadata';v.addEventListener('loadedmetadata',()=>{v.currentTime=Math.min(retainedTime,v.duration)});v.src='/media/'+a.id;panel.append(v);const name=text('h2',a.name);panel.append(name,text('p',revision.feedback ? 'Revised from the original using recorded feedback. Full request and evidence below.' : 'Original creation from the supplied brief.'));const link=text('a','Download MP4');link.href='/media/'+a.id+'?download=1';panel.append(link);const label=text('label','Saved output name');const input=document.createElement('input');input.value=a.name;input.setAttribute('aria-label','Output name '+(index+1));const b=text('button','Rename');b.onclick=async()=>{try{await request('/rename',{id:a.id,name:input.value});name.textContent=input.value;$('notice').textContent='Renamed without rendering or changing the video bytes.'}catch(e){$('notice').textContent=e.message}};const controls=document.createElement('div');controls.className='controls';controls.append(input,b);panel.append(label,controls);const details=document.createElement('details');details.append(text('summary','Evidence and limitations'));const p=text('pre',JSON.stringify({revision:revision.id,requested_change:revision.feedback,source_integrity:revision.source_integrity,video_integrity:a.integrity,duration:a.duration,usage:revision.usage,model_review:revision.model_review,sampled_times:revision.evidence.flatMap(e=>e.frames.map(f=>f.time)),limitations:revision.limitations},null,2));details.append(p);panel.append(details)}
-async function refresh(){const next=await request('/state');const changed=state&&next.revisions.length!==state.revisions.length;state=next;const populated=state.projects.filter(p=>p.revisions.length);if(populated.length===1)$('title').textContent=populated[0].name;if(changed){$('notice').textContent='A new revision is available. Choose it when ready; current playback and your draft are preserved.';document.querySelectorAll('#players select').forEach(select=>{const current=select.value;select.replaceChildren();state.revisions.forEach((r,n)=>{const o=text('option',`Revision ${n+1} · ${r.id.slice(0,8)}`);o.value=r.id;select.append(o)});select.value=current})};if(!$('players').children.length&&state.revisions.length){(state.revisions.length===1?[state.revisions[0]]:[state.revisions[0],state.revisions.at(-1)]).forEach((r,i)=>{const p=document.createElement('section');p.id='panel'+i;p.className='panel';$('players').append(p);showPanel(i,r)});if(state.revisions.length===1){$('players').style.gridTemplateColumns='minmax(0,1fr)';$('play').textContent='Play from start';$('pause').textContent='Pause'};$('scrub').max=Math.min(...state.revisions.map(r=>r.brief.duration))}const old=$('target').value;$('target').replaceChildren();state.revisions.forEach((r,n)=>{const o=text('option',`Revision ${n+1} · ${r.id.slice(0,8)}`);o.value=r.id;$('target').append(o)});$('target').value=old||state.revisions.at(-1)?.id||'';$('activity').replaceChildren();state.events.slice(-15).reverse().forEach(e=>{const p=text('p',e.kind==='feedback_submitted'?`Feedback saved: ${e.data.text}`:`${e.kind==='production' ? e.data.action : e.kind.replaceAll('_',' ')} · ${e.subject.slice(0,8)}`);p.className='small';$('activity').append(p)})}
-$('play').onclick=()=>document.querySelectorAll('video').forEach(v=>{v.currentTime=0;v.play().catch(e=>$('notice').textContent=e.message)});$('pause').onclick=()=>document.querySelectorAll('video').forEach(v=>v.pause());$('scrub').oninput=e=>{document.querySelectorAll('video').forEach(v=>{v.pause();v.currentTime=Number(e.target.value)});$('time').textContent=Number(e.target.value).toFixed(1)+'s'};$('submit').onclick=async()=>{try{const result=await request('/feedback',{revision_id:$('target').value,text:$('feedback').value});$('receipt').textContent='Saved · '+result.id.slice(0,8);$('feedback').value='';await refresh()}catch(e){$('receipt').textContent=e.message}};refresh().catch(e=>$('notice').textContent=e.message);setInterval(()=>refresh().catch(e=>$('notice').textContent=e.message),5000);
-</script></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Unfold</title>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside>
+        <div class="brand-row">
+          <div class="brand">unfold<span>.</span></div>
+          <button
+            id="theme"
+            class="theme"
+            aria-label="Theme: System. Switch to Light."
+            title="Theme: System. Switch to Light."
+          ></button>
+        </div>
+        <label for="project">Project</label
+        ><select id="project"></select>
+        <nav>
+          <button data-page="review" class="on">Review</button
+          ><button data-page="library">Library</button
+          ><button data-page="delivery">Export</button>
+        </nav>
+        <div class="context">
+          <small>Current selection</small>
+          <div id="selection"></div>
+          <p class="muted">
+            Projects start with your caller. Work and feedback remain in your
+            library.
+          </p>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <small id="crumb">Project / Review</small>
+            <h1 id="title">Unfold</h1>
+          </div>
+          <button
+            id="renameProject"
+            title="Rename this project without changing its revisions"
+          >
+            Rename
+          </button>
+        </header>
+        <div id="notice" class="notice" role="status"></div>
+        <section id="review" class="screen review">
+          <div class="row spread toolbar">
+            <div class="row">
+              <button id="single" class="on">Single</button
+              ><button id="compare">Compare</button
+              ><button id="latest" hidden>Latest</button>
+            </div>
+            <div class="row">
+              <button id="feedbackToggle" aria-expanded="false">Feedback</button
+              ><button id="historyToggle" aria-expanded="false">History</button>
+            </div>
+          </div>
+          <div class="review-body">
+            <div class="stage">
+              <div id="players" class="players"></div>
+              <div class="controls">
+                <button id="play">Play</button><button id="pause">Pause</button
+                ><input
+                  id="scrub"
+                  aria-label="Composition time"
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="0.01"
+                  value="0"
+                /><small id="time">0.00s</small>
+              </div>
+              <small
+                >Encoded output · Compare uses equal timestamps, which may
+                represent different beats after retiming.</small
+              >
+            </div>
+            <section id="feedbackDrawer" class="drawer" hidden>
+              <h2>Feedback</h2>
+              <small id="feedbackTarget"></small
+              ><label for="at">At (seconds)</label
+              ><input
+                id="at"
+                type="number"
+                min="0"
+                step="0.01"
+                value="0"
+              /><label for="end">Through (optional)</label
+              ><input id="end" type="number" min="0" step="0.01" /><label
+                for="feedback"
+                >Change or preserve</label
+              ><textarea
+                id="feedback"
+                placeholder="Describe the change and what should stay."
+              ></textarea>
+              <p id="draftStatus" class="muted">Unsubmitted draft</p>
+              <div class="row">
+                <button id="apply" class="primary">Apply</button
+                ><button
+                  id="note"
+                  title="Save a comment without starting refinement"
+                >
+                  Comment
+                </button>
+              </div>
+              <p id="allowance" class="muted"></p>
+              <div id="jobs"></div>
+            </section>
+            <section id="historyDrawer" class="drawer" hidden>
+              <h2>History</h2>
+              <div id="history"></div>
+            </section>
+          </div>
+        </section>
+        <section id="library" class="screen" hidden>
+          <div class="row spread toolbar">
+            <h2>Library</h2>
+            <div class="row">
+              <button id="createPack" title="Create a reusable identity pack">
+                Create</button
+              ><button id="importPack" title="Select an Unfold pack ZIP">
+                Import</button
+              ><button
+                id="addAsset"
+                title="Add an image, recording, audio or font"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+          <div class="library-grid">
+            <div class="card">
+              <h3>Packs</h3>
+              <div id="packs"></div>
+              <h3>Assets</h3>
+              <div id="assets" class="gallery"></div>
+            </div>
+            <div id="packDetail" class="card">
+              <h2>Selected pack</h2>
+              <p class="muted">Select or create a pack.</p>
+            </div>
+          </div>
+        </section>
+        <section id="delivery" class="screen" hidden>
+          <div class="row spread toolbar">
+            <h2>Export</h2>
+            <span id="exportRevision" class="pill"></span>
+          </div>
+          <div class="columns">
+            <div class="card">
+              <h3>Composition</h3>
+              <p class="muted">Uses the revision selected in Review.</p>
+              <label for="reference">Reference video</label
+              ><select id="reference"></select
+              ><label for="referenceStart">Start in recording (seconds)</label
+              ><input
+                id="referenceStart"
+                type="number"
+                min="0"
+                step="0.01"
+                value="0"
+              />
+              <p class="muted">
+                Recording audio is excluded. Video scales to fit the canvas; no
+                crop.
+              </p>
+              <label for="audio">Audio</label
+              ><select id="audio"></select>
+              <div class="row">
+                <div>
+                  <label for="audioStart">Starts at</label
+                  ><input id="audioStart" type="number" min="0" value="0" />
+                </div>
+                <div>
+                  <label for="audioOffset">Trim from</label
+                  ><input id="audioOffset" type="number" min="0" value="0" />
+                </div>
+              </div>
+              <label for="cueText">Timing notes</label
+              ><textarea
+                id="cueText"
+                placeholder="Optional note at the selected review time"
+              ></textarea>
+              <div class="row" style="margin-top: 16px">
+                <button id="renderVideo" class="primary">Video</button
+                ><button id="renderOverlay">Overlay only</button>
+              </div>
+              <p class="muted">
+                Video combines the reference, graphics and selected audio.
+                Overlay only is a silent transparent MOV. Rendering does not
+                invoke a model.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Outputs</h3>
+              <div id="outputs"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <dialog id="dialog"><div id="dialogBody"></div></dialog>
+    <input id="file" type="file" hidden />
+    <script src="/dashboard.js"></script>
+  </body>
+</html>

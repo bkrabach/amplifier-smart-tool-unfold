@@ -22,7 +22,11 @@ class Brief(Strict):
     title: str = Field(min_length=1, max_length=120)
     intent: str = Field(min_length=1, max_length=12000)
     context: str = Field(default="", max_length=30000)
-    identity: str = Field(default="", max_length=5000)
+    identity: str = Field(default="", max_length=20000)
+    identity_version: str | None = None
+    reference_id: str | None = None
+    reference_start: float = Field(default=0, ge=0)
+    cues: list[str] = Field(default_factory=list, max_length=40)
     duration: float = Field(default=20, ge=5, le=60)
 
 
@@ -44,7 +48,8 @@ class Grant(Strict):
 
 class Element(Strict):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")
-    kind: Literal["card", "text", "line", "dot", "path", "circle", "arc"]
+    kind: Literal["card", "text", "line", "dot", "path", "circle", "arc", "image"]
+    asset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     x: float = Field(ge=0, le=1280)
     y: float = Field(ge=0, le=720)
     width: float = Field(gt=0, le=1280)
@@ -114,7 +119,7 @@ class Scene(Strict):
 
     title: str = Field(min_length=1, max_length=120)
     duration: float = Field(ge=5, le=60)
-    background: str = Field(default="#08131f", pattern=r"^#[0-9a-fA-F]{6}$")
+    background: str = Field(default="#08131f", pattern=r"^(#[0-9a-fA-F]{6}|transparent)$")
     elements: list[Element] = Field(min_length=1, max_length=70)
     tweens: list[Tween] = Field(min_length=1, max_length=200)
     camera: list[CameraMove] = Field(default_factory=list, max_length=30)
@@ -140,6 +145,8 @@ class Scene(Strict):
         end = 0
         for move in self.camera:
             if move.at < end or move.at + move.duration > self.duration:
-                raise ValueError("Camera moves must be chronological, non-overlapping and fit duration.")
+                raise ValueError(
+                    "Camera moves must be chronological, non-overlapping and fit duration."
+                )
             end = move.at + move.duration
         return self

@@ -94,3 +94,11 @@ This guidance draws on HyperFrames' public composition and rendering documentati
 https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes-core
 The bounded Scene input is Unfold's internal authoring profile, not an upstream
 HyperFrames interchange standard or a claim to expose every HyperFrames feature.
+
+For a narrow change to existing element properties, use `patch` instead of
+re-emitting the whole scene. Payload: `{"elements":{"existing_id":{"text":"New text"}}}`.
+Optional `title` and `background` replace those scene fields. All untouched elements,
+tweens and camera moves are preserved by code; the resulting full scene is validated.
+Render and inspect the patched result before submission. Image elements may use only
+an asset_id from AVAILABLE IDENTITY IMAGES. Reference samples are supplied recording
+context, not generated-output evidence or proof of events beyond the inspected frames.

@@ -85,7 +85,7 @@ class Gate:
                 content += [
                     {
                         "type": "text",
-                        "text": f"Evidence {key}, encoded video at {frame['time']} seconds. Sampling gaps remain unobserved.",
+                        "text": f"Evidence {key}, {observation.get('method', 'encoded video')}, at composition time {frame['time']} seconds. Sampling gaps remain unobserved.",
                     },
                     {
                         "type": "image",
@@ -220,6 +220,9 @@ async def execute(owner):
         prompt += "\nSCENE SCHEMA:\n" + json.dumps(Scene.model_json_schema())
         prompt += "\nINPUT DATA:\n" + json.dumps(
             {key: owner.request.get(key) for key in ("brief", "feedback", "base_scene")}
+        )
+        prompt += "\nAVAILABLE IDENTITY IMAGES (use asset_id in image elements):\n" + json.dumps(
+            {i: {"name": a["name"]} for i, a in owner.request.get("resources", {}).items()}
         )
         await engine.submit_turn(
             {"sessionId": owner.request["operation_id"], "turnId": "1", "prompt": prompt}

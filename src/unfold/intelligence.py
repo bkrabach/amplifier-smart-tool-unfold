@@ -19,11 +19,63 @@ class Production:
         self.scene = None
         self.rendered = None
         self.observations = {}
+        self.reference_evidence = None
         self.delivered = set()
         self.calls = self.model_calls = self.renders = self.frames = 0
         self.text_bytes = self.image_bytes = 0
         self.result = self.fatal = None
         self.lock = threading.Lock()
+        reference = request.get("reference")
+        if reference:
+            from .backend import run
+            from .store import uid
+
+            if digest(Path(reference["path"])) != reference["sha256"]:
+                raise UnfoldError("MATERIAL_CHANGED", "Reference changed before inspection.")
+            times = [0, request["brief"]["duration"] / 2, request["brief"]["duration"] - 0.1][
+                : max(0, self.grant.max_frames - 1)
+            ]
+            frames = []
+            for index, time in enumerate(times):
+                path = self.directory / f"reference-{index}.jpg"
+                run(
+                    [
+                        "ffmpeg",
+                        "-v",
+                        "error",
+                        "-ss",
+                        str(reference["start"] + time),
+                        "-i",
+                        reference["path"],
+                        "-frames:v",
+                        "1",
+                        "-vf",
+                        "scale=1280:720:force_original_aspect_ratio=decrease",
+                        "-y",
+                        str(path),
+                    ],
+                    timeout=30,
+                )
+                frames.append({"path": str(path), "time": time, "sha256": digest(path)})
+            if frames:
+                key = uid()
+                self.observations[key] = {
+                    "id": key,
+                    "frames": frames,
+                    "method": "reference footage samples; not generated animation",
+                    "reference_id": reference["id"],
+                    "video_sha256": reference["sha256"],
+                    "source_sha256": reference["sha256"],
+                }
+                self.reference_evidence = {
+                    "reference_id": reference["id"],
+                    "sha256": reference["sha256"],
+                    "reference_start": reference["start"],
+                    "composition_times": times,
+                    "method": "sampled reference frames disclosed to the selected model; gaps remain unobserved",
+                }
+                self.event("reference_sampled", self.reference_evidence)
+                self.frames = len(frames)
 
     def remaining(self):
         return {
@@ -56,11 +108,40 @@ class Production:
                     "base_scene": self.request.get("base_scene"),
                     "remaining": self.remaining(),
                 }
-            if action == "author":
+            if action in ("author", "patch"):
+                if action == "patch":
+                    import copy
+
+                    scene_data = copy.deepcopy(
+                        self.scene.model_dump() if self.scene else self.request.get("base_scene")
+                    )
+                    if not scene_data:
+                        raise ValueError("Patch requires an authored or base composition.")
+                    if set(data) - {"elements", "title", "background"}:
+                        raise ValueError("Patch supports element properties, title and background.")
+                    for identity, changes in data.get("elements", {}).items():
+                        element = next(
+                            (e for e in scene_data["elements"] if e["id"] == identity), None
+                        )
+                        if element is None or "id" in changes:
+                            raise ValueError(
+                                "Patch must identify an existing element and preserve its ID."
+                            )
+                        element.update(changes)
+                    for key in ("title", "background"):
+                        if key in data:
+                            scene_data[key] = data[key]
+                    data = scene_data
                 scene = Scene.model_validate(data)
                 if scene.duration != self.request["brief"]["duration"]:
                     raise ValueError("Preserve the requested duration exactly.")
-                self.backend.author(scene, self.directory / "source")
+                resources = self.request.get("resources", {})
+                for asset in resources.values():
+                    if digest(Path(asset["path"])) != asset["sha256"]:
+                        raise UnfoldError("MATERIAL_CHANGED", "Selected identity image changed.")
+                self.backend.author(
+                    scene, self.directory / "source", {i: a["path"] for i, a in resources.items()}
+                )
                 self.scene, self.rendered = scene, None
                 self.observations.clear()
                 self.delivered.clear()
@@ -141,6 +222,7 @@ class Production:
                     "render": self.rendered,
                     "evidence": evidence,
                     "model_review": review,
+                    "reference_evidence": self.reference_evidence,
                     "limitations": limitations
                     + [
                         "Sampled frames do not verify every intervening frame or motion smoothness.",
@@ -182,7 +264,15 @@ class Production:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["inspect", "author", "render", "sample", "submit", "limitation"],
+                        "enum": [
+                            "inspect",
+                            "author",
+                            "patch",
+                            "render",
+                            "sample",
+                            "submit",
+                            "limitation",
+                        ],
                     },
                     "payload": {
                         "type": "string",
@@ -203,6 +293,7 @@ class Production:
                         if isinstance(exc, UnfoldError)
                         else {"message": str(exc)[:3000]}
                     )
+                    owner.event("production_error", {"action": input.get("action"), "error": error})
                     return ToolResult(success=False, error=error)
 
         return Tool()

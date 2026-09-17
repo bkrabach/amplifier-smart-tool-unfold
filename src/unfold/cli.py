@@ -8,17 +8,44 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .help import backend_package, manifest, schemas, skill
+from .help import backend_package, capability_skill, manifest, schemas, skill
 from .lib import Unfold
 from .models import Brief, Grant, UnfoldError
 
 
+class SkillHelp(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if self.const is None:
+            print(skill())
+        elif self.const == "call" and getattr(namespace, "capability", None):
+            from .operations import CAPABILITIES
+
+            name = namespace.capability
+            if name not in CAPABILITIES:
+                parser.error(f"Unknown capability: {name}")
+            print(capability_skill(name, json_adapter=True))
+        else:
+            print(capability_skill(self.const, argument_reference=parser.format_help()))
+        parser.exit()
+
+
+class SkillParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        kwargs["add_help"] = False
+        super().__init__(*args, **kwargs)
+        self.add_argument("-h", action="help", help="Show the short argument reference.")
+        self.add_argument(
+            "--help",
+            action=SkillHelp,
+            nargs=0,
+            const=None if " " not in self.prog else self.prog.split()[-1],
+            help="Read the capability usage skill.",
+        )
+
+
 def main():
-    if sys.argv[1:] == ["--help"]:
-        print(skill())
-        return
-    parser = argparse.ArgumentParser(
-        description="Unfold motion graphics. --help prints the full skill."
+    parser = SkillParser(
+        prog="unfold", description="Unfold motion graphics. --help prints the full skill."
     )
     parser.add_argument(
         "--library", help="Retained library directory (default ~/.local/share/unfold)"
@@ -57,6 +84,9 @@ def main():
         else:
             p.add_argument("id", help="Base revision ID")
             p.add_argument("--feedback", required=True)
+    p = commands.add_parser("call", help="Invoke a public library capability with JSON arguments.")
+    p.add_argument("capability")
+    p.add_argument("--args", required=True, help="JSON argument file, or - for stdin")
     p = commands.add_parser("dashboard", help="Open a loopback review service; Ctrl-C stops it.")
     p.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
@@ -68,7 +98,12 @@ def main():
         else:
             library = Unfold(args.library, args.backend)
             command = args.command
-            if command == "dashboard":
+            if command == "call":
+                from .operations import invoke
+
+                payload = sys.stdin.read() if args.args == "-" else Path(args.args).read_text()
+                result = invoke(library, args.capability, json.loads(payload))
+            elif command == "dashboard":
                 with library.dashboard(args.port) as viewer:
                     print(json.dumps({"url": viewer.url}), flush=True)
                     while True:
@@ -105,7 +140,7 @@ def main():
             sys.exit(1)
     except KeyboardInterrupt:
         pass
-    except (UnfoldError, ValidationError, OSError) as exc:
+    except (UnfoldError, ValidationError, OSError, ValueError, TypeError) as exc:
         error = (
             exc.as_dict()
             if isinstance(exc, UnfoldError)
