@@ -2,6 +2,8 @@
 
 **Make an idea clear through motion.**
 
+![Unfold’s review dashboard showing From spark to system: luminous orbital geometry and the closing Make ideas move title.](docs/images/unfold-studio.png)
+
 Unfold helps you and your agent turn technical explanations into animations.
 Describe a concept, a flow through your system, or the handoff you want people to
 understand. Review the result, compare revisions side by side, and give feedback
@@ -82,6 +84,10 @@ original. Existing projects retain the identity version they used, so changing a
 pack does not silently change earlier work.
 
 ## What to expect
+
+The image above is the real review dashboard showing **From spark to system**,
+a 28-second promotional animation created and rendered through Unfold’s embedded
+agent. It is a product screenshot, not an interface mockup.
 
 Unfold currently makes 5–60 second compositions at 1280×720 and 30 fps. It supports
 animated geometry, text, images, stroke drawing and camera movement. This is an
