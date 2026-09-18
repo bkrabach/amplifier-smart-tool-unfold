@@ -126,3 +126,5 @@ and a visible unsupported-host error. Native renderer tests additionally require
 `UNFOLD_TEST_BACKEND` as documented in `AGENTS.md`. Regenerate the bundled resource
 and bundled dependency license notice after changing `mcp-app/`; Node is a build
 dependency only. `npm ci` reproduces the SDK bundle pinned in package-lock.json.
+Media navigation regressions must cover failed loads after a valid preview: old
+video/image sources and download links must not remain under the new revision.

@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 pytest.importorskip("mcp")
 pytest.importorskip("playwright")
@@ -41,10 +42,16 @@ def test_mcp_app_video_drafts_shared_position_and_reopen(tmp_path):
             browser = await pw.chromium.launch()
             page = await browser.new_page(viewport={"width": 1000, "height": 1350})
             errors, calls, reads = [], [], []
+            fail_media_info = set()
             page.on("pageerror", lambda error: errors.append(str(error)))
 
             async def call(params):
                 calls.append(params)
+                if (
+                    params["name"] == "unfold_media_info"
+                    and params["arguments"]["artifact_id"] in fail_media_info
+                ):
+                    raise RuntimeError("fixture media_info failure")
                 result = await client.call_tool(params["name"], params.get("arguments", {}))
                 return result.model_dump(by_alias=True, exclude_none=True)
 
@@ -129,6 +136,21 @@ def test_mcp_app_video_drafts_shared_position_and_reopen(tmp_path):
             )
             assert library.store.list("operation") == []
             assert library.store.list("review_job") == []
+            # A failed load must clear the previous revision's media before the
+            # new identity becomes the feedback target.
+            fail_media_info.add(artifacts[0])
+            await frame.locator("#revisions").select_option(revisions[0])
+            await expect(frame.locator("#identity")).to_have_text(revisions[0])
+            await expect(frame.locator("#notice.error")).to_be_visible()
+            await expect(video).to_be_hidden()
+            assert await video.get_attribute("src") is None
+            image = frame.locator("#image")
+            await expect(image).to_be_hidden()
+            assert await image.get_attribute("src") is None
+            download = frame.locator("#download")
+            await expect(download).to_be_hidden()
+            assert await download.get_attribute("href") is None
+            assert await download.get_attribute("download") is None
             assert (
                 await page.evaluate("window.savedContext.structuredContent.draft_is_authority")
                 is False
@@ -149,6 +171,12 @@ def test_mcp_app_video_drafts_shared_position_and_reopen(tmp_path):
             await expect(page.frame_locator("#app").locator("#notice.error")).to_contain_text(
                 "does not support MCP resource reads"
             )
+            await expect(page.frame_locator("#app").locator("#video")).to_be_hidden()
+            assert await page.frame_locator("#app").locator("#video").get_attribute("src") is None
+            await expect(page.frame_locator("#app").locator("#download")).to_be_hidden()
+            assert (
+                await page.frame_locator("#app").locator("#download").get_attribute("href") is None
+            )
             # Large media is an explicit limit; no resource fetch begins.
             record = library.store.get(artifacts[-1], "artifact")
             media_path = library.store.root / record["relative_path"]
@@ -160,7 +188,103 @@ def test_mcp_app_video_drafts_shared_position_and_reopen(tmp_path):
             await expect(page.frame_locator("#app").locator("#notice.error")).to_contain_text(
                 "exceeds the 32 MiB view limit"
             )
+            await expect(page.frame_locator("#app").locator("#video")).to_be_hidden()
+            assert await page.frame_locator("#app").locator("#video").get_attribute("src") is None
+            await expect(page.frame_locator("#app").locator("#download")).to_be_hidden()
+            assert (
+                await page.frame_locator("#app").locator("#download").get_attribute("href") is None
+            )
             assert len(reads) == reads_before
+            assert not errors, errors
+            await browser.close()
+
+    asyncio.run(run())
+
+
+def test_mcp_app_resource_failure_clears_previous_image(tmp_path):
+    node_modules = ROOT / "mcp-app" / "node_modules"
+    if not node_modules.exists():
+        pytest.skip("Run npm ci --prefix mcp-app for the independent AppBridge fixture.")
+    script = subprocess.run(
+        [
+            str(node_modules / ".bin" / "esbuild"),
+            str(ROOT / "mcp-app" / "test-host.js"),
+            "--bundle",
+            "--format=iife",
+            "--log-level=error",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    async def run():
+        library, _, revisions, artifacts = seed_media_library(tmp_path)
+        record = library.store.get(artifacts[0], "artifact")
+        image_path = (library.store.root / record["relative_path"]).with_name("fixture.png")
+        Image.new("RGB", (2, 2), "#72dfb1").save(image_path, format="PNG")
+        record.update(
+            relative_path=str(image_path.relative_to(library.store.root)),
+            format="png",
+            sha256=digest(image_path),
+        )
+        library.store.put("artifact", record)
+        failed_reads = set()
+        async with Client(create_server(library)) as client, async_playwright() as pw:
+            browser = await pw.chromium.launch()
+            page = await browser.new_page(viewport={"width": 1000, "height": 1350})
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+
+            async def call(params):
+                result = await client.call_tool(params["name"], params.get("arguments", {}))
+                return result.model_dump(by_alias=True, exclude_none=True)
+
+            async def read(params):
+                if any(
+                    params["uri"].startswith(f"unfold://artifact/{artifact}/")
+                    for artifact in failed_reads
+                ):
+                    raise RuntimeError("fixture resource failure")
+                result = await client.read_resource(params["uri"])
+                return result.model_dump(by_alias=True, exclude_none=True)
+
+            await page.expose_function("hostCall", call)
+            await page.expose_function("hostRead", read)
+            await page.goto("about:blank")
+            await page.add_script_tag(content=script)
+            initial = await client.call_tool("unfold_review_state", {})
+            html = (ROOT / "src" / "unfold" / "resources" / "mcp_app.html").read_text()
+            await page.evaluate(
+                "([html,result])=>mountUnfold(html,result)",
+                [html, initial.model_dump(by_alias=True, exclude_none=True)],
+            )
+            frame = page.frame_locator("#app")
+            await expect(frame.locator("#notice")).to_have_text("Ready to review retained work.")
+            await expect(frame.locator("#identity")).to_have_text(revisions[-1])
+
+            image = frame.locator("#image")
+            video = frame.locator("#video")
+            download = frame.locator("#download")
+            await frame.locator("#revisions").select_option(revisions[0])
+            await expect(frame.locator("#identity")).to_have_text(revisions[0])
+            await expect(image).to_be_visible()
+            await expect(video).to_be_hidden()
+            assert (await image.get_attribute("src")).startswith("blob:")
+            await expect(download).to_be_visible()
+            assert (await download.get_attribute("download")).endswith(".png")
+
+            failed_reads.add(artifacts[-1])
+            await frame.locator("#revisions").select_option(revisions[-1])
+            await expect(frame.locator("#identity")).to_have_text(revisions[-1])
+            await expect(frame.locator("#notice.error")).to_be_visible()
+            await expect(video).to_be_hidden()
+            await expect(image).to_be_hidden()
+            assert await video.get_attribute("src") is None
+            assert await image.get_attribute("src") is None
+            await expect(download).to_be_hidden()
+            assert await download.get_attribute("href") is None
+            assert await download.get_attribute("download") is None
             assert not errors, errors
             await browser.close()
 

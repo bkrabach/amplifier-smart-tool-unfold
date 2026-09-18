@@ -196,63 +196,82 @@ async function saveView() {
   viewVersion = view.version;
   context();
 }
+function clearMedia(message) {
+  mediaKey = null;
+  $("video").pause();
+  $("video").removeAttribute("src");
+  $("image").removeAttribute("src");
+  $("download").hidden = true;
+  $("download").removeAttribute("href");
+  $("download").removeAttribute("download");
+  if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+  mediaUrl = null;
+  $("video").hidden = true;
+  $("image").hidden = true;
+  if (message) $("media-status").textContent = message;
+}
 async function media(identity) {
   if (!identity) {
-    mediaKey = null;
-    $("video").pause();
-    $("video").removeAttribute("src");
-    $("download").hidden = true;
-    if (mediaUrl) URL.revokeObjectURL(mediaUrl);
-    mediaUrl = null;
-    $("video").hidden = true;
-    $("image").hidden = true;
+    clearMedia();
     $("media-status").textContent =
       "No retained preview is available for this revision.";
     return;
   }
   const key = identity;
   if (mediaKey === key) return;
+  clearMedia();
   mediaKey = key;
   $("media-status").textContent = "Loading retained media…";
-  const info = await call("media_info", { artifact_id: identity });
-  if (info.size > 32 * 1024 * 1024)
-    throw Error(
-      "This preview exceeds the 32 MiB view limit. Use the export tool to save the intact media.",
-    );
-  if (!app.getHostCapabilities()?.serverResources)
-    throw Error(
-      "This host does not support MCP resource reads. The retained media is still available through Unfold export.",
-    );
-  const chunks = [];
-  for (let offset = 0; offset < info.size; offset += info.chunk_bytes) {
-    const resource = await app.readServerResource({
-      uri: `unfold://artifact/${encodeURIComponent(identity)}/${offset}`,
-    });
-    const blob = resource.contents.find(
-      (c) => typeof c.blob === "string",
-    )?.blob;
-    if (blob === undefined)
-      throw Error("The media resource did not return binary data.");
-    const bytes = Uint8Array.from(atob(blob), (c) => c.charCodeAt(0));
-    if (bytes.length !== Math.min(info.chunk_bytes, info.size - offset))
-      throw Error("The media resource returned an incomplete chunk.");
-    chunks.push(bytes);
+  try {
+    const info = await call("media_info", { artifact_id: identity });
     if (mediaKey !== key) return;
+    if (info.size > 32 * 1024 * 1024)
+      throw Error(
+        "This preview exceeds the 32 MiB view limit. Use the export tool to save the intact media.",
+      );
+    if (!app.getHostCapabilities()?.serverResources)
+      throw Error(
+        "This host does not support MCP resource reads. The retained media is still available through Unfold export.",
+      );
+    const chunks = [];
+    for (let offset = 0; offset < info.size; offset += info.chunk_bytes) {
+      const resource = await app.readServerResource({
+        uri: `unfold://artifact/${encodeURIComponent(identity)}/${offset}`,
+      });
+      const blob = resource.contents.find(
+        (c) => typeof c.blob === "string",
+      )?.blob;
+      if (blob === undefined)
+        throw Error("The media resource did not return binary data.");
+      const bytes = Uint8Array.from(atob(blob), (c) => c.charCodeAt(0));
+      if (bytes.length !== Math.min(info.chunk_bytes, info.size - offset))
+        throw Error("The media resource returned an incomplete chunk.");
+      chunks.push(bytes);
+      if (mediaKey !== key) return;
+    }
+    if (mediaKey !== key) return;
+    const url = URL.createObjectURL(new Blob(chunks, { type: info.mime_type }));
+    if (mediaKey !== key) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    mediaUrl = url;
+    $("video").pause();
+    $("video").hidden = info.mime_type.startsWith("image/");
+    $("image").hidden = !$("video").hidden;
+    if ($("video").hidden) $("image").src = url;
+    else $("video").src = url;
+    $("download").href = url;
+    $("download").download = info.name;
+    $("download").textContent = "Download " + info.name;
+    $("download").hidden = false;
+    $("media-status").textContent =
+      `${info.mime_type.split("/")[1].toUpperCase()} · ${(info.size / 1024).toFixed(0)} KiB · Retained preview`;
+  } catch (error) {
+    if (mediaKey !== key) return;
+    clearMedia("No retained preview is available for this revision.");
+    throw error;
   }
-  const url = URL.createObjectURL(new Blob(chunks, { type: info.mime_type }));
-  if (mediaUrl) URL.revokeObjectURL(mediaUrl);
-  mediaUrl = url;
-  $("video").pause();
-  $("video").hidden = info.mime_type.startsWith("image/");
-  $("image").hidden = !$("video").hidden;
-  if ($("video").hidden) $("image").src = url;
-  else $("video").src = url;
-  $("download").href = url;
-  $("download").download = info.name;
-  $("download").textContent = "Download " + info.name;
-  $("download").hidden = false;
-  $("media-status").textContent =
-    `${info.mime_type.split("/")[1].toUpperCase()} · ${(info.size / 1024).toFixed(0)} KiB · Retained preview`;
 }
 async function chooseRevision(identity, persist = false) {
   if (revisionId && revisionId !== identity && persist) {
@@ -324,12 +343,7 @@ async function chooseRevision(identity, persist = false) {
     null,
     2,
   );
-  try {
-    await media(artifactId);
-  } catch (error) {
-    mediaKey = null;
-    throw error;
-  }
+  await media(artifactId);
   if (persist) await saveView();
   context();
 }
